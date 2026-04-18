@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, Camera, Check, Coins, Sparkles } from "lucide-react";
+import { X, Camera, Check, Sparkles } from "lucide-react";
 import { useGame } from "../state";
 import { useOverlayClose } from "@/hooks/useOverlayClose";
 
@@ -65,7 +65,7 @@ export const CheckInOverlay = () => {
                 <div className="flex-1">
                   <p className="text-sm font-extrabold">{g.text}</p>
                   <p className="text-[10px] font-bold text-honey-foreground flex items-center gap-1 mt-0.5">
-                    <Coins className="h-3 w-3" /> +{g.reward} coins{g.photo && " · photo proof"}
+                    🪵+1 🪨+1 XP{g.photo && " · photo proof"}
                   </p>
                 </div>
               </button>

@@ -1,9 +1,9 @@
-import { X, Hammer, Lock, Coins, Heart, AlertCircle } from "lucide-react";
+import { X, Hammer, Lock, Heart, AlertCircle } from "lucide-react";
 import { useGame, BUILD_LIBRARY } from "../state";
 import { useOverlayClose } from "@/hooks/useOverlayClose";
 
 export const BuildOverlay = () => {
-  const { screen, setScreen, coins, level, setPlacingType, placingType } = useGame();
+  const { screen, setScreen, logs, rocks, level, setPlacingType, placingType } = useGame();
   const { closing, close } = useOverlayClose(() => setScreen(null));
 
   if (screen !== "build" && !closing) return null;
@@ -14,11 +14,13 @@ export const BuildOverlay = () => {
     b.unlockLevel != null && level < b.unlockLevel
       ? `Unlock at Lv.${b.unlockLevel}`
       : b.locked ?? null;
+  const canAfford = (b: typeof BUILD_LIBRARY[number]) =>
+    logs >= (b.logCost ?? 0) && rocks >= (b.rockCost ?? 0);
 
   const startPlacing = (type: typeof BUILD_LIBRARY[number]["type"]) => {
     const opt = BUILD_LIBRARY.find((b) => b.type === type)!;
     if (isLocked(opt)) return;
-    if (coins < opt.cost) return;
+    if (!canAfford(opt)) return;
     setPlacingType(type);
     setScreen(null);
   };
@@ -45,7 +47,10 @@ export const BuildOverlay = () => {
           </div>
           <div className="flex items-center gap-2">
             <div className="resource-pill">
-              <Coins className="h-4 w-4 text-honey" /> <span className="text-sm">{coins}</span>
+              <span className="text-base">🪵</span> <span className="text-sm tabular-nums">{logs}</span>
+            </div>
+            <div className="resource-pill">
+              <span className="text-base">🪨</span> <span className="text-sm tabular-nums">{rocks}</span>
             </div>
             <button onClick={close} className="h-9 w-9 rounded-xl bg-card hover:bg-muted flex items-center justify-center transition shadow-soft">
               <X className="h-4 w-4" />
@@ -63,10 +68,11 @@ export const BuildOverlay = () => {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-4 overflow-y-auto bg-gradient-to-b from-background to-secondary-soft/20">
           {BUILD_LIBRARY.map((b) => {
             const locked = isLocked(b);
-            const tooExpensive = !locked && coins < b.cost;
+            const tooExpensive = !locked && !canAfford(b);
             const lockReason = lockMsg(b);
             const isPlacing = placingType === b.type;
-            const tier = b.cost < 150 ? "common" : b.cost < 300 ? "rare" : b.cost < 600 ? "epic" : "legendary";
+            const totalCost = (b.logCost ?? 0) + (b.rockCost ?? 0);
+            const tier = totalCost < 10 ? "common" : totalCost < 18 ? "rare" : totalCost < 26 ? "epic" : "legendary";
             const tierStyle = {
               common: "from-secondary-soft/70 to-secondary-soft/30 border-secondary",
               rare: "from-primary-soft/70 to-primary-soft/30 border-primary",
@@ -108,10 +114,19 @@ export const BuildOverlay = () => {
                   <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
                 <p className="font-extrabold text-sm leading-tight">{b.name}</p>
-                <div className="flex items-center justify-between mt-1.5">
-                  <span className={`text-xs font-black flex items-center gap-1 ${tooExpensive ? "text-destructive" : "text-honey-foreground"}`}>
-                    <Coins className="h-3 w-3" /> {b.cost}
-                  </span>
+                <div className="flex items-center justify-between mt-1.5 gap-1">
+                  <div className="flex items-center gap-1.5">
+                    {(b.logCost ?? 0) > 0 && (
+                      <span className={`text-xs font-black flex items-center gap-0.5 ${tooExpensive && logs < (b.logCost ?? 0) ? "text-destructive" : "text-honey-foreground"}`}>
+                        🪵{b.logCost}
+                      </span>
+                    )}
+                    {(b.rockCost ?? 0) > 0 && (
+                      <span className={`text-xs font-black flex items-center gap-0.5 ${tooExpensive && rocks < (b.rockCost ?? 0) ? "text-destructive" : "text-foreground/70"}`}>
+                        🪨{b.rockCost}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded">⌀{b.radius.toFixed(1)}</span>
                 </div>
                 <div className="mt-1.5 flex flex-wrap gap-1">

@@ -1,4 +1,4 @@
-import { Coins, Flame, Sparkles, Sun, Home, ChevronDown, Zap, Volume2, VolumeX } from "lucide-react";
+import { Flame, Sparkles, Sun, Home, ChevronDown, Zap, Volume2, VolumeX } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useGame } from "@/game/state";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -8,7 +8,7 @@ const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export const TopBar = () => {
   const navigate = useNavigate();
-  const { coins, streak, dayCount, level, xp, agents, screen, setScreen, islandName, audioMuted, setAudioMuted } = useGame();
+  const { logs, rocks, streak, dayCount, level, xp, agents, screen, setScreen, islandName, audioMuted, setAudioMuted } = useGame();
   const isMobile = useIsMobile();
   const onlineCount = agents.filter((a) => a.online).length;
 
@@ -20,11 +20,6 @@ export const TopBar = () => {
 
   /* ── Mobile layout ──────────────────────────────────── */
   if (isMobile) {
-    const coinsLabel = coins >= 10000
-      ? `${(coins / 1000).toFixed(0)}k`
-      : coins >= 1000
-      ? `${(coins / 1000).toFixed(1)}k`
-      : String(coins);
 
     return (
       <div
@@ -83,14 +78,23 @@ export const TopBar = () => {
             {/* ── Section 2: Stats + Party ───────────────────── */}
             <div className="flex items-center px-3 py-2.5 gap-1">
 
-              {/* Coins */}
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                <Coins className="h-3.5 w-3.5 text-honey" strokeWidth={2.5} />
-                <span className="text-[14px] font-black tabular-nums leading-none">{coinsLabel}</span>
+              {/* Logs */}
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <span className="text-[13px] leading-none">🪵</span>
+                <span className="text-[14px] font-black tabular-nums leading-none">{logs}</span>
               </div>
 
               {/* Dot separator */}
-              <div className="mx-2.5 h-3 w-px bg-foreground/15 flex-shrink-0" />
+              <div className="mx-1.5 h-3 w-px bg-foreground/15 flex-shrink-0" />
+
+              {/* Rocks */}
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <span className="text-[13px] leading-none">🪨</span>
+                <span className="text-[14px] font-black tabular-nums leading-none">{rocks}</span>
+              </div>
+
+              {/* Dot separator */}
+              <div className="mx-1.5 h-3 w-px bg-foreground/15 flex-shrink-0" />
 
               {/* Streak */}
               <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -229,10 +233,12 @@ export const TopBar = () => {
         </div>
         <div className="flex items-center gap-2">
           <div className="resource-pill">
-            <span className="h-7 w-7 rounded-full bg-honey-gradient flex items-center justify-center shadow-inner">
-              <Coins className="h-4 w-4 text-honey-foreground" strokeWidth={2.8} />
-            </span>
-            <span className="text-sm tabular-nums">{coins.toLocaleString()}</span>
+            <span className="h-7 w-7 rounded-full bg-honey-gradient flex items-center justify-center shadow-inner text-base">🪵</span>
+            <span className="text-sm tabular-nums">{logs}</span>
+          </div>
+          <div className="resource-pill">
+            <span className="h-7 w-7 rounded-full bg-secondary-soft flex items-center justify-center shadow-inner text-base">🪨</span>
+            <span className="text-sm tabular-nums">{rocks}</span>
           </div>
           <div className="resource-pill">
             <span className="h-7 w-7 rounded-full bg-coral-gradient flex items-center justify-center shadow-inner">
