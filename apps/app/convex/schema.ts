@@ -10,6 +10,8 @@ export default defineSchema({
     islandLevel: v.number(),
     xp: v.number(),
     currency: v.number(),
+    logs: v.optional(v.number()),
+    rocks: v.optional(v.number()),
     streakDays: v.optional(v.number()),
     dayCount: v.optional(v.number()),
     lastCheckInDate: v.optional(v.string()),

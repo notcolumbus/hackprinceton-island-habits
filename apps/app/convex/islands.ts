@@ -262,3 +262,20 @@ export const getIslandsByPhone = query({
     return islands;
   },
 });
+
+
+export const gatherResource = mutation({
+  args: {
+    islandId: v.id("islands"),
+    logs: v.optional(v.number()),
+    rocks: v.optional(v.number()),
+  },
+  async handler(ctx, args) {
+    const island = await ctx.db.get(args.islandId);
+    if (!island) return;
+    await ctx.db.patch(args.islandId, {
+      logs: (island.logs ?? 0) + (args.logs ?? 0),
+      rocks: (island.rocks ?? 0) + (args.rocks ?? 0),
+    });
+  },
+});

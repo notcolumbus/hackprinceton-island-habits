@@ -62,6 +62,8 @@ export const placeBuilding = mutation({
     gridX: v.number(),
     gridY: v.number(),
     costPaid: v.number(),
+    logCost: v.optional(v.number()),
+    rockCost: v.optional(v.number()),
     placedBy: v.string(),
     buildTimeDays: v.number(),
   },
@@ -74,22 +76,19 @@ export const placeBuilding = mutation({
     }
     const island = await ctx.db.get(args.islandId);
     if (!island) throw new Error("Island not found");
-    let availableCurrency = island.currency ?? 0;
+
+    const logCost = Math.max(0, Math.round(args.logCost ?? 0));
+    const rockCost = Math.max(0, Math.round(args.rockCost ?? 0));
+    const availableLogs = island.logs ?? 0;
+    const availableRocks = island.rocks ?? 0;
+
+    if (logCost > 0 || rockCost > 0) {
+      if (logCost > availableLogs) throw new Error("Not enough logs to place this structure");
+      if (rockCost > availableRocks) throw new Error("Not enough rocks to place this structure");
+    }
+
+    // Legacy currency path (costPaid > 0 means old-style purchase)
     const costPaid = Math.max(0, Math.round(args.costPaid));
-
-    // Back-compat for older islands created before starter currency existed.
-    // Grant one-time starter funds only for brand-new, empty islands.
-    const hasAnyBuildings = await ctx.db
-      .query("buildings")
-      .withIndex("by_island", (q) => q.eq("islandId", args.islandId))
-      .first();
-    if (!hasAnyBuildings && availableCurrency === 0) {
-      availableCurrency = 300;
-    }
-
-    if (costPaid > availableCurrency) {
-      throw new Error("Not enough currency to place this structure");
-    }
 
     const maxX = Math.max(1, Math.floor((island.gridSize?.width ?? 10) / 2));
     const maxY = Math.max(1, Math.floor((island.gridSize?.height ?? 10) / 2));
@@ -127,7 +126,8 @@ export const placeBuilding = mutation({
       placedAtEra: currentEra,
     });
     await ctx.db.patch(args.islandId, {
-      currency: availableCurrency - costPaid,
+      ...(logCost > 0 ? { logs: availableLogs - logCost } : {}),
+      ...(rockCost > 0 ? { rocks: availableRocks - rockCost } : {}),
     });
     return id;
   },
