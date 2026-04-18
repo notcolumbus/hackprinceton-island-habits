@@ -20,6 +20,8 @@ interface Props {
   gossipFrozenFacingPos?: THREE.Vector3 | null;
   gossipApproachTarget?: THREE.Vector3 | null;
   gatherTarget?: THREE.Vector3 | null;
+  gatherResourceType?: "logs" | "rocks" | null;
+  gatherPopup?: "logs" | "rocks" | null;
 }
 
 const hashAgentId = (input: string): number => {
@@ -32,6 +34,31 @@ const hashAgentId = (input: string): number => {
 };
 
 const smoothStep = (t: number) => t * t * (3 - 2 * t);
+
+// Find the travelRef value (route index + fractional t) whose route position is
+// closest to `pos`. Used to resync travelRef after an off-route excursion so the
+// agent resumes from its actual location rather than teleporting back to the route.
+const resyncTravel = (pos: THREE.Vector3, route: [number, number][]): number => {
+  let bestVal = 0;
+  let bestDist = Infinity;
+  const n = route.length;
+  for (let i = 0; i < n; i++) {
+    const a = route[i];
+    const b = route[(i + 1) % n];
+    const ax = b[0] - a[0], az = b[1] - a[1];
+    const len2 = ax * ax + az * az;
+    const t = len2 > 0
+      ? Math.max(0, Math.min(1, ((pos.x - a[0]) * ax + (pos.z - a[1]) * az) / len2))
+      : 0;
+    const cx = a[0] + t * ax, cz = a[1] + t * az;
+    const d = Math.hypot(pos.x - cx, pos.z - cz);
+    if (d < bestDist) {
+      bestDist = d;
+      bestVal = i + t;
+    }
+  }
+  return bestVal;
+};
 
 /* ── Chibi-style cozy villager agent ──────────────────── */
 export const Agent3D = ({
@@ -48,6 +75,8 @@ export const Agent3D = ({
   gossipFrozenFacingPos,
   gossipApproachTarget,
   gatherTarget,
+  gatherResourceType,
+  gatherPopup,
 }: Props) => {
   const group = useRef<THREE.Group>(null);
   const bodyGroup = useRef<THREE.Group>(null);
@@ -76,6 +105,22 @@ export const Agent3D = ({
       .map((entry) => entry.point);
   }, [agent.home, agent.id, waypoints]);
 
+  // Average world-space distance between consecutive waypoints. The travelRef
+  // advances in route-index units, so the effective world speed is
+  // pace × avgSegLen. Use this same scale for off-route movement (gather/gossip)
+  // so all walking looks consistent.
+  const avgSegLen = useMemo(() => {
+    const route = orderedWaypoints.length > 1 ? orderedWaypoints : null;
+    if (!route) return 5;
+    let total = 0;
+    for (let i = 0; i < route.length; i++) {
+      const a = route[i];
+      const b = route[(i + 1) % route.length];
+      total += Math.hypot(b[0] - a[0], b[1] - a[1]);
+    }
+    return total / route.length;
+  }, [orderedWaypoints]);
+
   const pos = useRef(new THREE.Vector3(agent.home[0], GROUND_Y, agent.home[1]));
   const angle = useRef(seed * Math.PI * 2);
   const walkCycle = useRef(0);
@@ -85,6 +130,9 @@ export const Agent3D = ({
   // Cumulative offset applied on top of deterministic lerp so agents can slide
   // around obstacles instead of clipping through buildings/scenery.
   const displacement = useRef(new THREE.Vector2(0, 0));
+  // Tracks previous gatherTarget to detect the moment it transitions to null,
+  // triggering a travelRef resync so the agent doesn't snap back to the route.
+  const prevGatherRef = useRef<THREE.Vector3 | null>(null);
 
   // Keep fresh refs so useFrame closure always has latest live data.
   const buildingsRef = useRef(buildings);
@@ -118,13 +166,24 @@ export const Agent3D = ({
     const pace = 0.085 + (agent.mood / 100) * 0.045;
     let direction = new THREE.Vector2(0, 0);
 
+    // Resync travelRef when returning from a gather trip so the agent continues
+    // from its current position rather than snapping back to the waypoint route.
+    if (prevGatherRef.current !== null && !gatherTarget) {
+      const route = orderedWaypoints.length > 0 ? orderedWaypoints : [agent.home];
+      travelRef.current = resyncTravel(pos.current, route);
+    }
+    prevGatherRef.current = gatherTarget ?? null;
+
+    // World-space speed that matches normal waypoint walking.
+    const worldPace = pace * avgSegLen;
+
     if (gossipApproachTarget) {
       // ── Approach mode: walk toward another agent ──
       const dx = gossipApproachTarget.x - pos.current.x;
       const dz = gossipApproachTarget.z - pos.current.z;
       const dist = Math.sqrt(dx * dx + dz * dz);
       if (dist > 0.15) {
-        const step = Math.min(pace * delta * 60 * delta, dist);
+        const step = Math.min(worldPace * delta, dist);
         pos.current.x += (dx / dist) * step;
         pos.current.z += (dz / dist) * step;
         direction.set(dx, dz);
@@ -137,7 +196,7 @@ export const Agent3D = ({
       const dz = gatherTarget.z - pos.current.z;
       const dist = Math.sqrt(dx * dx + dz * dz);
       if (dist > 0.9) {
-        const step = Math.min(pace * delta * 60 * delta, dist);
+        const step = Math.min(worldPace * delta, dist);
         pos.current.x += (dx / dist) * step;
         pos.current.z += (dz / dist) * step;
         direction.set(dx, dz);
@@ -582,7 +641,7 @@ export const Agent3D = ({
       <Html position={[0, 1.25, 0]} center distanceFactor={6} zIndexRange={[10, 0]}>
         <div className="pointer-events-none flex flex-col items-center gap-0.5 select-none">
           <div
-            className={`px-2.5 py-0.5 rounded-full text-[10px] font-black shadow-lg whitespace-nowrap ${
+            className={`px-2.5 py-0.5 rounded-full text-[10px] font-black shadow-lg whitespace-nowrap flex items-center gap-1 ${
               agent.isYou
                 ? "bg-primary text-primary-foreground border-2 border-white"
                 : "bg-card text-foreground border border-border"
@@ -590,6 +649,8 @@ export const Agent3D = ({
           >
             {agent.name}
             {agent.isYou && " ★"}
+            {gatherTarget && gatherResourceType === "logs" && <span>🪵</span>}
+            {gatherTarget && gatherResourceType === "rocks" && <span>🪨</span>}
           </div>
           <div className="h-1 w-10 rounded-full bg-black/30 overflow-hidden">
             <div
@@ -606,6 +667,25 @@ export const Agent3D = ({
           <div className="pointer-events-none relative bg-white rounded-2xl px-3 py-1.5 text-[11px] font-bold shadow-lg max-w-[150px] text-center leading-snug border border-neutral-200 select-none">
             {gossipText}
             <div className="absolute bottom-[-5px] left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-white border-r border-b border-neutral-200 rotate-45" />
+          </div>
+        </Html>
+      )}
+
+      {/* ── Gather resource popup — floats up and fades when collecting ── */}
+      {gatherPopup && (
+        <Html position={[0, 1.9, 0]} center distanceFactor={6} zIndexRange={[9999, 9999]} portal={{ current: document.body }}>
+          <style>{`
+            @keyframes gatherFloat {
+              0%   { opacity: 1; transform: translateY(0px) scale(1.2); }
+              40%  { opacity: 1; transform: translateY(-12px) scale(1); }
+              100% { opacity: 0; transform: translateY(-22px) scale(0.9); }
+            }
+          `}</style>
+          <div
+            className="pointer-events-none select-none font-black text-[14px] drop-shadow-lg whitespace-nowrap"
+            style={{ animation: "gatherFloat 1.5s ease-out forwards" }}
+          >
+            +1 {gatherPopup === "logs" ? "🪵" : "🪨"}
           </div>
         </Html>
       )}

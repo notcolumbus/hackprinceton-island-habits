@@ -17,8 +17,12 @@ import { useGame } from "@/game/state";
 const TrackAgentButton = () => {
   const { trackAgent, setTrackAgent, viewingEra, setScreen } = useGame();
   if (viewingEra !== null) return null;
+  // On mobile these buttons live in QuestLog's floating row instead.
   return (
-    <div className="absolute bottom-24 right-4 sm:right-auto sm:left-4 pointer-events-auto flex flex-col gap-2">
+    <div
+      className="hidden sm:flex absolute left-4 z-30 pointer-events-auto flex-col gap-2"
+      style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)" }}
+    >
       <button
         onClick={() => setTrackAgent(!trackAgent)}
         className={`hud-panel px-3 py-2 text-xs font-bold rounded-xl active:scale-95 transition shadow-float ${

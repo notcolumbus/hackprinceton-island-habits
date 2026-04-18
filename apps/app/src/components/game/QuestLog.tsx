@@ -4,7 +4,7 @@ import { useGame } from "@/game/state";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export const QuestLog = () => {
-  const { goals, setScreen, completeGoal, groupMotivation, buildings } = useGame();
+  const { goals, setScreen, completeGoal, groupMotivation, buildings, trackAgent, setTrackAgent, viewingEra } = useGame();
   const isMobile = useIsMobile();
   const doneCount = goals.filter((g) => g.done).length;
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -94,21 +94,44 @@ export const QuestLog = () => {
   if (isMobile) {
     return (
       <div className="pointer-events-none">
-        {/* Floating badge above dock */}
-        <button
-          onClick={() => setSheetOpen(true)}
-          className="absolute left-2 bottom-[72px] z-30 pointer-events-auto hud-panel px-2.5 py-1.5 flex items-center gap-1.5 hover:scale-[1.02] active:scale-95 transition"
+        {/* Floating row above dock */}
+        <div
+          className="absolute left-2 z-30 pointer-events-auto flex items-center gap-2"
           style={{ bottom: "calc(72px + env(safe-area-inset-bottom, 0px))" }}
         >
-          <Scroll className="h-3.5 w-3.5 text-accent" strokeWidth={2.5} />
-          <span className="text-[11px] font-extrabold">Quests</span>
-          <span className="text-[10px] font-black text-accent-foreground bg-accent/30 px-1.5 py-0.5 rounded-full">
-            {doneCount}/{goals.length}
-          </span>
-          {doneCount < goals.length && (
-            <span className="h-2 w-2 rounded-full bg-accent animate-pulse" />
+          <button
+            onClick={() => setSheetOpen(true)}
+            className="hud-panel px-2.5 py-1.5 flex items-center gap-1.5 hover:scale-[1.02] active:scale-95 transition"
+          >
+            <Scroll className="h-3.5 w-3.5 text-accent" strokeWidth={2.5} />
+            <span className="text-[11px] font-extrabold">Quests</span>
+            <span className="text-[10px] font-black text-accent-foreground bg-accent/30 px-1.5 py-0.5 rounded-full">
+              {doneCount}/{goals.length}
+            </span>
+            {doneCount < goals.length && (
+              <span className="h-2 w-2 rounded-full bg-accent animate-pulse" />
+            )}
+          </button>
+
+          {viewingEra === null && (
+            <>
+              <button
+                onClick={() => setTrackAgent(!trackAgent)}
+                className={`hud-panel px-2.5 py-1.5 text-[11px] font-extrabold flex items-center gap-1 active:scale-95 transition ${
+                  trackAgent ? "btn-game-coral" : ""
+                }`}
+              >
+                🎯 {trackAgent ? "Tracking" : "Track Me"}
+              </button>
+              <button
+                onClick={() => setScreen("gossip")}
+                className="hud-panel px-2.5 py-1.5 text-[11px] font-extrabold flex items-center gap-1 active:scale-95 transition"
+              >
+                💬 Gossip
+              </button>
+            </>
           )}
-        </button>
+        </div>
 
         {sheetOpen && (
           <div
