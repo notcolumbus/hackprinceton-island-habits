@@ -226,6 +226,8 @@ function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
       level,
       xp,
       coins: islandDetails.island.currency ?? 0,
+      logs: islandDetails.island.logs ?? 0,
+      rocks: islandDetails.island.rocks ?? 0,
       streak: islandDetails.island.streakDays ?? 0,
       dayCount: islandDetails.island.dayCount ?? 1,
       islandEra: islandDetails.island.era ?? 0,
@@ -357,6 +359,8 @@ export function IslandPage() {
       level,
       xp,
       coins: islandDetails.island.currency ?? 0,
+      logs: islandDetails.island.logs ?? 0,
+      rocks: islandDetails.island.rocks ?? 0,
       streak: islandDetails.island.streakDays ?? 0,
       dayCount: islandDetails.island.dayCount ?? 1,
       islandEra: currentEra,
@@ -369,7 +373,7 @@ export function IslandPage() {
         new Set((todayCheckIns ?? []).map((c) => c.goalId)),
       ),
       buildings,
-      onBuildingPlaced: (type, x, y, cost, days) => {
+      onBuildingPlaced: (type, x, y, cost, days, logCost, rockCost) => {
         if (!islandId) return Promise.reject(new Error('Missing island id'))
         const placedBy = participantIdentity || 'unknown'
         return placeBuildingMut({
@@ -378,6 +382,8 @@ export function IslandPage() {
           gridX: x,
           gridY: y,
           costPaid: cost,
+          logCost: logCost ?? 0,
+          rockCost: rockCost ?? 0,
           placedBy,
           buildTimeDays: days,
         })

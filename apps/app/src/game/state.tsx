@@ -61,7 +61,9 @@ export interface Building {
 export interface BuildOption {
   type: BuildingType;
   name: string;
-  cost: number;
+  cost: number;          // legacy — kept for reference only
+  logCost: number;
+  rockCost: number;
   radius: number;        // footprint radius in world units
   emoji: string;
   district: DistrictId;
@@ -77,69 +79,69 @@ export interface BuildOption {
 
 export const BUILD_LIBRARY: BuildOption[] = [
   // ── Lv 0 starters ──────────────────────────────────────────────────────────
-  { type: "house", name: "Cottage", cost: 120, radius: 0.55, emoji: "🏠", district: "main", buildDays: 3,
+  { type: "house", name: "Cottage", cost: 120, logCost: 8, rockCost: 4, radius: 0.55, emoji: "🏠", district: "main", buildDays: 3,
     rules: { likes: [{ type: "tree", range: 1.5, pts: 2 }, { type: "fountain", range: 2, pts: 4 }, { type: "garden", range: 1.5, pts: 3 }],
              dislikes: [{ type: "gym", range: 1.5, pts: -3 }, { type: "bonfire", range: 1.2, pts: -2 }] } },
-  { type: "garden", name: "Garden", cost: 80, radius: 0.4, emoji: "🌷", district: "main", buildDays: 1,
+  { type: "garden", name: "Garden", cost: 80, logCost: 4, rockCost: 2, radius: 0.4, emoji: "🌷", district: "main", buildDays: 1,
     rules: { likes: [{ type: "house", range: 1.5, pts: 3 }, { type: "fountain", range: 2, pts: 5 }, { type: "tree", range: 1.5, pts: 2 }] } },
-  { type: "bonfire", name: "Bonfire", cost: 60, radius: 0.4, emoji: "🔥", district: "main", buildDays: 1,
+  { type: "bonfire", name: "Bonfire", cost: 60, logCost: 6, rockCost: 0, radius: 0.4, emoji: "🔥", district: "main", buildDays: 1,
     rules: { likes: [{ type: "tree", range: 2, pts: 1 }],
              dislikes: [{ type: "house", range: 1.2, pts: -2 }, { type: "library", range: 1.5, pts: -3 }] } },
   // ── Lv 2 ───────────────────────────────────────────────────────────────────
-  { type: "bakery", name: "Bakery", cost: 110, radius: 0.5, emoji: "🥐", district: "main", buildDays: 2, unlockLevel: 2,
+  { type: "bakery", name: "Bakery", cost: 110, logCost: 6, rockCost: 4, radius: 0.5, emoji: "🥐", district: "main", buildDays: 2, unlockLevel: 2,
     rules: { likes: [{ type: "house", range: 1.5, pts: 4 }, { type: "garden", range: 1.5, pts: 3 }, { type: "fountain", range: 2, pts: 2 }],
              dislikes: [{ type: "gym", range: 1.5, pts: -2 }] } },
   // ── Lv 3 ───────────────────────────────────────────────────────────────────
-  { type: "cabin", name: "Forest Cabin", cost: 180, radius: 0.55, emoji: "🛖", district: "forest", buildDays: 3, unlockLevel: 3,
+  { type: "cabin", name: "Forest Cabin", cost: 180, logCost: 12, rockCost: 2, radius: 0.55, emoji: "🛖", district: "forest", buildDays: 3, unlockLevel: 3,
     rules: { likes: [{ type: "tree", range: 1.5, pts: 4 }, { type: "cabin", range: 2.5, pts: 2 }] } },
-  { type: "dock", name: "Wooden Dock", cost: 140, radius: 0.6, emoji: "⚓", district: "beach", buildDays: 2, unlockLevel: 3,
+  { type: "dock", name: "Wooden Dock", cost: 140, logCost: 10, rockCost: 2, radius: 0.6, emoji: "⚓", district: "beach", buildDays: 2, unlockLevel: 3,
     rules: { likes: [{ type: "water", range: 2, pts: 6 }] } },
   // ── Lv 4 ───────────────────────────────────────────────────────────────────
-  { type: "fountain", name: "Fountain", cost: 160, radius: 0.55, emoji: "⛲", district: "main", buildDays: 3, unlockLevel: 4,
+  { type: "fountain", name: "Fountain", cost: 160, logCost: 2, rockCost: 10, radius: 0.55, emoji: "⛲", district: "main", buildDays: 3, unlockLevel: 4,
     rules: { likes: [{ type: "house", range: 2, pts: 3 }, { type: "garden", range: 2, pts: 5 }, { type: "library", range: 2, pts: 3 }] } },
-  { type: "teahouse", name: "Tea House", cost: 150, radius: 0.55, emoji: "🍵", district: "forest", buildDays: 3, unlockLevel: 4,
+  { type: "teahouse", name: "Tea House", cost: 150, logCost: 8, rockCost: 4, radius: 0.55, emoji: "🍵", district: "forest", buildDays: 3, unlockLevel: 4,
     rules: { likes: [{ type: "tree", range: 1.5, pts: 4 }, { type: "garden", range: 2, pts: 3 }, { type: "rock", range: 1.5, pts: 2 }],
              dislikes: [{ type: "gym", range: 2, pts: -3 }, { type: "bonfire", range: 1.5, pts: -2 }] } },
   // ── Lv 5 ───────────────────────────────────────────────────────────────────
-  { type: "gym", name: "Gym Hut", cost: 200, radius: 0.6, emoji: "🏋️", district: "main", buildDays: 4, unlockLevel: 5,
+  { type: "gym", name: "Gym Hut", cost: 200, logCost: 4, rockCost: 10, radius: 0.6, emoji: "🏋️", district: "main", buildDays: 4, unlockLevel: 5,
     rules: { likes: [{ type: "fountain", range: 2, pts: 3 }, { type: "rock", range: 1.5, pts: 2 }],
              dislikes: [{ type: "house", range: 1.5, pts: -3 }, { type: "library", range: 2, pts: -5 }] } },
-  { type: "zengarden", name: "Zen Garden", cost: 130, radius: 0.5, emoji: "🪨", district: "forest", buildDays: 2, unlockLevel: 5,
+  { type: "zengarden", name: "Zen Garden", cost: 130, logCost: 2, rockCost: 8, radius: 0.5, emoji: "🪨", district: "forest", buildDays: 2, unlockLevel: 5,
     rules: { likes: [{ type: "shrine", range: 2.5, pts: 5 }, { type: "tree", range: 1.5, pts: 3 }, { type: "rock", range: 1.5, pts: 3 }, { type: "flower", range: 1.5, pts: 2 }],
              dislikes: [{ type: "gym", range: 2, pts: -4 }, { type: "bonfire", range: 1.5, pts: -3 }] } },
   // ── Lv 6 ───────────────────────────────────────────────────────────────────
-  { type: "library", name: "Library", cost: 240, radius: 0.7, emoji: "📚", district: "main", buildDays: 5, unlockLevel: 6,
+  { type: "library", name: "Library", cost: 240, logCost: 10, rockCost: 8, radius: 0.7, emoji: "📚", district: "main", buildDays: 5, unlockLevel: 6,
     rules: { likes: [{ type: "tree", range: 2, pts: 3 }, { type: "garden", range: 2, pts: 4 }],
              dislikes: [{ type: "gym", range: 2, pts: -5 }, { type: "bonfire", range: 1.5, pts: -3 }] } },
-  { type: "observatory", name: "Observatory", cost: 220, radius: 0.6, emoji: "🔭", district: "hill", buildDays: 5, unlockLevel: 6,
+  { type: "observatory", name: "Observatory", cost: 220, logCost: 4, rockCost: 14, radius: 0.6, emoji: "🔭", district: "hill", buildDays: 5, unlockLevel: 6,
     rules: { likes: [{ type: "rock", range: 2, pts: 4 }, { type: "tree", range: 2, pts: 2 }, { type: "water", range: 3, pts: 3 }],
              dislikes: [{ type: "bonfire", range: 2, pts: -4 }] } },
   // ── Lv 7 ───────────────────────────────────────────────────────────────────
-  { type: "shrine", name: "Hill Shrine", cost: 320, radius: 0.55, emoji: "⛩️", district: "hill", buildDays: 4, unlockLevel: 7,
+  { type: "shrine", name: "Hill Shrine", cost: 320, logCost: 6, rockCost: 12, radius: 0.55, emoji: "⛩️", district: "hill", buildDays: 4, unlockLevel: 7,
     rules: { likes: [{ type: "tree", range: 2, pts: 3 }, { type: "rock", range: 2, pts: 3 }] } },
-  { type: "belltower", name: "Bell Tower", cost: 190, radius: 0.5, emoji: "🔔", district: "main", buildDays: 4, unlockLevel: 7,
+  { type: "belltower", name: "Bell Tower", cost: 190, logCost: 8, rockCost: 8, radius: 0.5, emoji: "🔔", district: "main", buildDays: 4, unlockLevel: 7,
     rules: { likes: [{ type: "shrine", range: 3, pts: 5 }, { type: "house", range: 2, pts: 3 }, { type: "garden", range: 2, pts: 2 }],
              dislikes: [{ type: "windmill", range: 2, pts: -2 }] } },
-  { type: "windmill", name: "Windmill", cost: 360, radius: 0.65, emoji: "🌬️", district: "main", buildDays: 5, unlockLevel: 7,
+  { type: "windmill", name: "Windmill", cost: 360, logCost: 14, rockCost: 4, radius: 0.65, emoji: "🌬️", district: "main", buildDays: 5, unlockLevel: 7,
     rules: { likes: [{ type: "garden", range: 2.5, pts: 5 }, { type: "house", range: 2.5, pts: 3 }],
              dislikes: [{ type: "library", range: 2, pts: -2 }] } },
   // ── Lv 8 ───────────────────────────────────────────────────────────────────
-  { type: "treehouse", name: "Treehouse", cost: 280, radius: 0.55, emoji: "🌳", district: "main", buildDays: 4, unlockLevel: 8,
+  { type: "treehouse", name: "Treehouse", cost: 280, logCost: 16, rockCost: 2, radius: 0.55, emoji: "🌳", district: "main", buildDays: 4, unlockLevel: 8,
     rules: { likes: [{ type: "tree", range: 1.2, pts: 6 }, { type: "flower", range: 1.5, pts: 2 }],
              dislikes: [{ type: "bonfire", range: 1.5, pts: -4 }] } },
   // ── Lv 9 ───────────────────────────────────────────────────────────────────
-  { type: "crystalgrotto", name: "Crystal Grotto", cost: 350, radius: 0.6, emoji: "💎", district: "hill", buildDays: 6, unlockLevel: 9,
+  { type: "crystalgrotto", name: "Crystal Grotto", cost: 350, logCost: 4, rockCost: 18, radius: 0.6, emoji: "💎", district: "hill", buildDays: 6, unlockLevel: 9,
     rules: { likes: [{ type: "rock", range: 2, pts: 5 }, { type: "shrine", range: 2.5, pts: 4 }, { type: "fountain", range: 2, pts: 3 }],
              dislikes: [{ type: "bonfire", range: 2, pts: -3 }, { type: "gym", range: 1.5, pts: -2 }] } },
   // ── Lv 10 ──────────────────────────────────────────────────────────────────
-  { type: "lighthouse", name: "Lighthouse", cost: 800, radius: 0.7, emoji: "🗼", district: "beach", buildDays: 7, unlockLevel: 10,
+  { type: "lighthouse", name: "Lighthouse", cost: 800, logCost: 12, rockCost: 20, radius: 0.7, emoji: "🗼", district: "beach", buildDays: 7, unlockLevel: 10,
     rules: { likes: [{ type: "water", range: 3, pts: 8 }, { type: "dock", range: 2.5, pts: 4 }] } },
   // ── Lv 11 ──────────────────────────────────────────────────────────────────
-  { type: "amphitheater", name: "Amphitheater", cost: 420, radius: 0.8, emoji: "🎭", district: "main", buildDays: 7, unlockLevel: 11,
+  { type: "amphitheater", name: "Amphitheater", cost: 420, logCost: 10, rockCost: 16, radius: 0.8, emoji: "🎭", district: "main", buildDays: 7, unlockLevel: 11,
     rules: { likes: [{ type: "fountain", range: 2.5, pts: 4 }, { type: "garden", range: 2, pts: 3 }, { type: "house", range: 2, pts: 2 }],
              dislikes: [{ type: "library", range: 2, pts: -4 }] } },
   // ── Lv 13 ──────────────────────────────────────────────────────────────────
-  { type: "moongate", name: "Moon Gate", cost: 560, radius: 0.65, emoji: "🌙", district: "beach", buildDays: 8, unlockLevel: 13,
+  { type: "moongate", name: "Moon Gate", cost: 560, logCost: 8, rockCost: 20, radius: 0.65, emoji: "🌙", district: "beach", buildDays: 8, unlockLevel: 13,
     rules: { likes: [{ type: "water", range: 2.5, pts: 5 }, { type: "shrine", range: 3, pts: 6 }, { type: "rock", range: 2, pts: 3 }],
              dislikes: [{ type: "bonfire", range: 2, pts: -3 }, { type: "gym", range: 2, pts: -2 }] } },
 ];
@@ -172,7 +174,7 @@ export interface ChatMsg { from: "agent" | "you"; text: string; ts: number; }
 export interface Scenery { id: string; type: "tree" | "rock" | "flower"; pos: [number, number]; district: DistrictId; variant: number; }
 
 type ConvexSyncPatch = Partial<
-  Pick<GameState, "level" | "xp" | "coins" | "streak" | "dayCount" | "islandEra" | "agents" | "buildings" | "goals">
+  Pick<GameState, "level" | "xp" | "coins" | "logs" | "rocks" | "streak" | "dayCount" | "islandEra" | "agents" | "buildings" | "goals">
 > & {
   serverNowMs?: number;
 };
@@ -183,6 +185,8 @@ interface GameState {
   selectedAgent: AgentId;
   setSelectedAgent: (id: AgentId) => void;
   coins: number;
+  logs: number;
+  rocks: number;
   streak: number;
   dayCount: number;
   level: number;
@@ -256,7 +260,7 @@ export interface GameBootstrapData {
   goals?: Goal[];
   buildings?: Building[];
   serverNowMs?: number;
-  onBuildingPlaced?: (type: string, x: number, y: number, cost: number, days: number) => void | Promise<unknown>;
+  onBuildingPlaced?: (type: string, x: number, y: number, cost: number, days: number, logCost?: number, rockCost?: number) => void | Promise<unknown>;
   onGoalCompleted?: (goalId: string) => void | Promise<void>;
   onDevNextDay?: () => void | Promise<void>;
   onDevNextDayBad?: () => void | Promise<void>;
@@ -415,7 +419,9 @@ export const GameProvider = ({
 
   const [screen, setScreen] = useState<ScreenId>(null);
   const [selectedAgent, setSelectedAgent] = useState<AgentId>(seededAgents[0]?.id ?? "sofia");
-  const [coins, setCoins] = useState(initialData?.coins ?? 300);
+  const [coins, setCoins] = useState(initialData?.coins ?? 0);
+  const [logs, setLogs] = useState(initialData?.logs ?? 0);
+  const [rocks, setRocks] = useState(initialData?.rocks ?? 0);
   const [streak, setStreak] = useState(initialData?.streak ?? 0);
   const [dayCount, setDayCount] = useState(initialData?.dayCount ?? 1);
   const [level, setLevel] = useState(initialData?.level ?? 1);
@@ -454,6 +460,8 @@ export const GameProvider = ({
     if (patch.level !== undefined) setLevel(patch.level);
     if (patch.xp !== undefined) setXp(patch.xp);
     if (patch.coins !== undefined) setCoins(patch.coins);
+    if (patch.logs !== undefined) setLogs(patch.logs);
+    if (patch.rocks !== undefined) setRocks(patch.rocks);
     if (patch.streak !== undefined) setStreak(patch.streak);
     if (patch.dayCount !== undefined) setDayCount(patch.dayCount);
     if (patch.islandEra !== undefined) setIslandEra(patch.islandEra);
@@ -553,7 +561,7 @@ export const GameProvider = ({
     }
 
     showToast(`Placing ${opt.name}...`);
-    Promise.resolve(persist(placingType, pos[0], pos[1], opt.cost, opt.buildDays))
+    Promise.resolve(persist(placingType, pos[0], pos[1], opt.cost, opt.buildDays, opt.logCost, opt.rockCost))
       .then(() => {
         // Convex sync bridge will replace pending entries with canonical records.
         showToast(`+${result.score} harmony · ${opt.name} built!`);
@@ -780,7 +788,7 @@ export const GameProvider = ({
     <Ctx.Provider value={{
       screen, setScreen,
       selectedAgent, setSelectedAgent,
-      coins, streak, dayCount, level, xp,
+      coins, logs, rocks, streak, dayCount, level, xp,
       agents, buildings, scenery, goals,
       islandEra, islandHistory, isTransitioning, graduateIsland, canGraduate,
       viewingEra, setViewingEra, isVisiting, visitIsland,
