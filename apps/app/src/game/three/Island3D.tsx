@@ -425,6 +425,74 @@ const GossipScheduler = ({
   return null;
 };
 
+/* ── Gathering scheduler — sends agents to trees/rocks to collect resources ── */
+const GatheringScheduler = ({
+  agents,
+  scenery,
+  agentPositions,
+  onGatherTargetUpdate,
+  onGather,
+}: {
+  agents: Agent[];
+  scenery: import("../state").Scenery[];
+  agentPositions: MutableRefObject<Map<string, THREE.Vector3>>;
+  onGatherTargetUpdate: (agentId: string, target: THREE.Vector3 | null) => void;
+  onGather: (agentId: string, type: "logs" | "rocks") => void;
+}) => {
+  // Per-agent: countdown until next gather trip, and which resource they're heading for
+  const timers = useRef<Map<string, number>>(new Map());
+  const targets = useRef<Map<string, { pos: THREE.Vector3; resource: "logs" | "rocks" } | null>>(new Map());
+
+  const nextTimerFor = (mood: number) => 15 + (1 - Math.max(0, Math.min(1, mood / 100))) * 45;
+
+  useFrame((_s, delta) => {
+    for (const agent of agents) {
+      // Init timer if first time
+      if (!timers.current.has(agent.id)) {
+        timers.current.set(agent.id, nextTimerFor(agent.mood) * Math.random()); // stagger initial timers
+        targets.current.set(agent.id, null);
+      }
+
+      const existing = targets.current.get(agent.id);
+      if (existing) {
+        // Check if agent has arrived
+        const agentPos = agentPositions.current.get(agent.id);
+        if (agentPos) {
+          const dx = existing.pos.x - agentPos.x;
+          const dz = existing.pos.z - agentPos.z;
+          if (Math.hypot(dx, dz) < 1.0) {
+            // Arrived — gather resource
+            onGather(agent.id, existing.resource);
+            targets.current.set(agent.id, null);
+            onGatherTargetUpdate(agent.id, null);
+            timers.current.set(agent.id, nextTimerFor(agent.mood));
+          }
+        }
+      } else {
+        // Count down to next gather
+        const t = (timers.current.get(agent.id) ?? 0) - delta;
+        timers.current.set(agent.id, t);
+        if (t <= 0) {
+          // Pick resource type randomly, weighted 50/50
+          const resource: "logs" | "rocks" = Math.random() < 0.5 ? "logs" : "rocks";
+          const targetType = resource === "logs" ? "tree" : "rock";
+          const candidates = scenery.filter((s) => s.type === targetType);
+          if (candidates.length > 0) {
+            const pick = candidates[Math.floor(Math.random() * candidates.length)];
+            const targetVec = new THREE.Vector3(pick.pos[0], 0, pick.pos[1]);
+            targets.current.set(agent.id, { pos: targetVec, resource });
+            onGatherTargetUpdate(agent.id, targetVec);
+          } else {
+            // No matching scenery — reset timer and skip
+            timers.current.set(agent.id, nextTimerFor(agent.mood));
+          }
+        }
+      }
+    }
+  });
+  return null;
+};
+
 /* ── Agent waypoints ─────────────────────────────────── */
 const WAYPOINTS: [number, number][] = [
   [-2.5,  1.2], [ 2.0, -1.0], [ 1.0,  3.0], [-3.5, -2.5], [ 4.0, -1.5],
@@ -467,11 +535,14 @@ const Scene = ({
     timeOffsetMs,
     audioMuted,
     showToast,
+    islandId,
   } = useGame();
   const agentPositions = useRef(new Map<string, THREE.Vector3>());
   const [activeConv, setActiveConv] = useState<ActiveConv | null>(null);
   const [gossipBubbles, setGossipBubbles] = useState<Map<string, string>>(new Map());
   const [approachIntent, setApproachIntent] = useState<{ aId: string; bId: string } | null>(null);
+  const [gatherTargets, setGatherTargets] = useState<Map<string, THREE.Vector3 | null>>(new Map());
+  const gatherResourceMut = useMutation(api.islands.gatherResource);
   const preferBrowserTtsRef = useRef(false);
   const ttsWarnedRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -706,6 +777,7 @@ const Scene = ({
               ? (agentPositions.current.get(approachIntent.bId) ?? null)
               : null
           }
+          gatherTarget={gatherTargets.get(a.id) ?? null}
         />
       ))}
 
@@ -716,6 +788,35 @@ const Scene = ({
           agentPositions={agentPositions}
           onApproachIntent={(aId, bId) => setApproachIntent(aId && bId ? { aId, bId } : null)}
           onGossip={onGossip}
+        />
+      )}
+
+      {viewingEra === null && (
+        <GatheringScheduler
+          agents={agents}
+          scenery={scenery}
+          agentPositions={agentPositions}
+          onGatherTargetUpdate={(agentId, target) => {
+            setGatherTargets((prev) => {
+              const next = new Map(prev);
+              next.set(agentId, target);
+              return next;
+            });
+          }}
+          onGather={(agentId, resource) => {
+            void (async () => {
+              if (!islandId) return;
+              try {
+                await gatherResourceMut({
+                  islandId: islandId as import("../../../convex/_generated/dataModel").Id<"islands">,
+                  logs: resource === "logs" ? 1 : undefined,
+                  rocks: resource === "rocks" ? 1 : undefined,
+                });
+              } catch {
+                // silently ignore — gathering is best-effort
+              }
+            })();
+          }}
         />
       )}
 
