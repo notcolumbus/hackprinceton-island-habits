@@ -90,12 +90,6 @@ export const placeBuilding = mutation({
     // Legacy currency path (costPaid > 0 means old-style purchase)
     const costPaid = Math.max(0, Math.round(args.costPaid));
 
-    const maxX = Math.max(1, Math.floor((island.gridSize?.width ?? 10) / 2));
-    const maxY = Math.max(1, Math.floor((island.gridSize?.height ?? 10) / 2));
-    if (Math.abs(args.gridX) > maxX || Math.abs(args.gridY) > maxY) {
-      throw new Error("Building placement is outside island bounds");
-    }
-
     const currentEra = island.era ?? 0;
     const occupied = await ctx.db
       .query("buildings")
