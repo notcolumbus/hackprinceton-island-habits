@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUser, useClerk } from '@clerk/clerk-react'
 import KnotapiJS from 'knotapi-js'
+import { usePhoneNumber } from '../hooks/usePhoneNumber'
 
 const MERCHANT_ID = 19
 const KnotCtor =
@@ -201,6 +202,7 @@ export function SettingsPage() {
   const navigate = useNavigate()
   const { user }    = useUser()
   const { signOut } = useClerk()
+  const phoneNumber = usePhoneNumber()
 
   const [connectingMerchants, setConnectingMerchants] = useState(false)
   const [merchantConnected,   setMerchantConnected]   = useState(false)
@@ -237,15 +239,28 @@ export function SettingsPage() {
     const backendBaseUrl  = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:5001'
     const knotClientId    = import.meta.env.VITE_KNOT_CLIENT_ID ?? ''
     const knotEnvironment = (import.meta.env.VITE_KNOT_ENVIRONMENT as 'development' | 'production') ?? 'production'
+    const userId = user?.id?.trim() ?? ''
 
     setKnotError(null)
     setConnectingMerchants(true)
     try {
       if (!knotClientId) throw new Error('Missing VITE_KNOT_CLIENT_ID in frontend env.')
+      if (!userId) throw new Error('You must be signed in before connecting merchants.')
+      const participantIds = [
+        phoneNumber,
+        (user?.unsafeMetadata?.icloudEmail as string | undefined) ?? '',
+        user?.primaryEmailAddress?.emailAddress ?? '',
+      ]
+        .map((value) => value?.trim() ?? '')
+        .filter(Boolean)
+
       const response = await fetch(`${backendBaseUrl}/api/knot/session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user?.id }),
+        body: JSON.stringify({
+          userId,
+          participantIds,
+        }),
       })
       if (!response.ok) throw new Error(await response.text())
       const data = (await response.json()) as SessionResponse
@@ -253,6 +268,7 @@ export function SettingsPage() {
       knotapi.open({
         sessionId: data.session, clientId: knotClientId,
         environment: knotEnvironment, entryPoint: 'settings',
+        metadata: { appUserId: userId },
         merchantIds: [MERCHANT_ID], useCategories: false, useSearch: false,
         onSuccess: (details: unknown) => {
           setMerchantConnected(true); setConnectingMerchants(false)
@@ -423,7 +439,7 @@ export function SettingsPage() {
                 </span>
               </div>
 
-              <BtnPrimary onClick={handleConnectMerchants} disabled={connectingMerchants} style={{ padding: '10px' }}>
+              <BtnPrimary onClick={handleConnectMerchants} disabled={connectingMerchants || !user?.id} style={{ padding: '10px' }}>
                 {connectingMerchants ? 'Connecting...' : merchantConnected ? 'Reconnect' : 'Connect DoorDash'}
               </BtnPrimary>
             </div>

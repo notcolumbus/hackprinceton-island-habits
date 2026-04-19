@@ -17,6 +17,7 @@ import type * as groupRooms from "../groupRooms.js";
 import type * as islands from "../islands.js";
 import type * as jobMutations from "../jobMutations.js";
 import type * as jobQueries from "../jobQueries.js";
+import type * as knot from "../knot.js";
 import type * as lib_agentState from "../lib/agentState.js";
 import type * as lib_identity from "../lib/identity.js";
 import type * as users from "../users.js";
@@ -37,6 +38,7 @@ declare const fullApi: ApiFromModules<{
   islands: typeof islands;
   jobMutations: typeof jobMutations;
   jobQueries: typeof jobQueries;
+  knot: typeof knot;
   "lib/agentState": typeof lib_agentState;
   "lib/identity": typeof lib_identity;
   users: typeof users;

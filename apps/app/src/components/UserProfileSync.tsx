@@ -31,6 +31,7 @@ export function UserProfileSync() {
     upsert({
       phoneNumber: phone || undefined,
       email,
+      clerkUserId: user.id,
       displayName,
     }).catch((err) => console.error('UserProfileSync failed', err))
   }, [isLoaded, user, phone, upsert])

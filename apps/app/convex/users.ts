@@ -9,14 +9,16 @@ export const upsertProfile = mutation({
   args: {
     phoneNumber: v.optional(v.string()),
     email: v.optional(v.string()),
+    clerkUserId: v.optional(v.string()),
     displayName: v.string(),
   },
   async handler(ctx, args) {
     const phone = args.phoneNumber?.trim() || undefined;
     const email = args.email?.trim().toLowerCase() || undefined;
+    const clerkUserId = args.clerkUserId?.trim() || undefined;
     const name = args.displayName.trim();
     if (!name) return null;
-    if (!phone && !email) return null;
+    if (!phone && !email && !clerkUserId) return null;
 
     let existing = null as null | Awaited<ReturnType<typeof ctx.db.get>>;
     if (phone) {
@@ -31,11 +33,18 @@ export const upsertProfile = mutation({
         .withIndex("by_email", (q) => q.eq("email", email))
         .first();
     }
+    if (!existing && clerkUserId) {
+      existing = await ctx.db
+        .query("users")
+        .withIndex("by_clerk_user_id", (q) => q.eq("clerkUserId", clerkUserId))
+        .first();
+    }
 
     if (existing) {
       await ctx.db.patch(existing._id, {
         phoneNumber: phone ?? (existing as any).phoneNumber,
         email: email ?? (existing as any).email,
+        clerkUserId: clerkUserId ?? (existing as any).clerkUserId,
         displayName: name,
         updatedAt: Date.now(),
       });
@@ -45,6 +54,7 @@ export const upsertProfile = mutation({
     return await ctx.db.insert("users", {
       phoneNumber: phone,
       email,
+      clerkUserId,
       displayName: name,
       updatedAt: Date.now(),
     });

@@ -169,11 +169,50 @@ export default defineSchema({
   users: defineTable({
     phoneNumber: v.optional(v.string()),
     email: v.optional(v.string()),
+    clerkUserId: v.optional(v.string()),
     displayName: v.string(),
     updatedAt: v.number(),
   })
     .index("by_phone", ["phoneNumber"])
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .index("by_clerk_user_id", ["clerkUserId"]),
+
+  // Mapping between an island participant identity (phone/email) and the
+  // external user id used in Knot (currently Clerk user id).
+  knotUserBindings: defineTable({
+    participantId: v.string(),
+    externalUserId: v.string(),
+    updatedAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_participant", ["participantId"])
+    .index("by_external", ["externalUserId"]),
+
+  // Last seen cursor per (external user, merchant) for cursor-based sync.
+  knotSyncCursors: defineTable({
+    externalUserId: v.string(),
+    merchantId: v.number(),
+    cursor: v.string(),
+    updatedAt: v.number(),
+  }).index("by_external_merchant", ["externalUserId", "merchantId"]),
+
+  // Transaction snapshots synced from Knot for agent context.
+  knotTransactions: defineTable({
+    externalUserId: v.string(),
+    participantId: v.optional(v.string()),
+    merchantId: v.number(),
+    merchantName: v.optional(v.string()),
+    transactionId: v.string(),
+    datetime: v.optional(v.string()),
+    orderStatus: v.optional(v.string()),
+    total: v.optional(v.string()),
+    currency: v.optional(v.string()),
+    productSummary: v.optional(v.string()),
+    raw: v.optional(v.any()),
+    syncedAt: v.number(),
+  })
+    .index("by_external_transaction", ["externalUserId", "transactionId"])
+    .index("by_external_synced", ["externalUserId", "syncedAt"]),
 
   gossipConversations: defineTable({
     islandId: v.id("islands"),

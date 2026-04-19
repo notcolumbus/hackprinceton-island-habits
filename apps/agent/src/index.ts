@@ -16,14 +16,17 @@ import {
   PROJECT_SECRET,
   CONVEX_URL,
   assertEnv,
+  autoCheckInFromPhoto,
   parseCommand,
   senderAddress,
   dispatchKnownCommand,
   handleChat,
+  syncKnotTransactionsOnBoot,
   logFrame,
 } from "./router.js";
 import { appendMessage } from "./state/chat-history.js";
 import { isTagged } from "./photon/mentions.js";
+import { startPhotoAutoCheckinWatcher } from "./photon/photoAutoCheckin.js";
 import { startHttpServer } from "./server.js";
 
 async function main(): Promise<void> {
@@ -41,17 +44,47 @@ async function main(): Promise<void> {
   console.log(`Commands: /start /help /goals /add /drop /edit /done /undo /status\n`);
 
   startHttpServer(app);
+  void startPhotoAutoCheckinWatcher().catch((err) => {
+    console.error("❌ Photo watcher crashed:", err);
+  });
+  void syncKnotTransactionsOnBoot().catch((err) => {
+    console.error("❌ Knot transaction bootstrap sync crashed:", err);
+  });
 
   for await (const [space, message] of app.messages) {
-    const content = message.content[0];
-    if (!content || content.type !== "plain_text") continue;
-    const body = content.text;
-    const time = message.timestamp.toLocaleTimeString();
-    const cmd = parseCommand(body);
-
     const resolvedSender = senderAddress(message);
     const senderLabel = resolvedSender ?? `raw:${message.sender.id}`;
     const kind = resolvedSender?.startsWith("+") ? "phone" : resolvedSender ? "email" : "unknown";
+    const time = message.timestamp.toLocaleTimeString();
+    const textContent = message.content.find((c): c is Extract<typeof c, { type: "plain_text" }> => c.type === "plain_text");
+    const body = textContent?.text ?? "";
+    const cmd = parseCommand(body);
+
+    const imageAttachments = message.content.filter(
+      (c): c is Extract<typeof c, { type: "attachment" }> =>
+        c.type === "attachment" && c.mimeType.startsWith("image/"),
+    );
+    if (imageAttachments.length > 0 && resolvedSender) {
+      for (const att of imageAttachments) {
+        try {
+          const imageBase64 = Buffer.from(att.data).toString("base64");
+          const result = await autoCheckInFromPhoto(
+            resolvedSender,
+            space.id,
+            imageBase64,
+            att.mimeType,
+          );
+          if (!result.checkedIn || !result.reply) continue;
+          await space.send(text(result.reply));
+          console.log(`└─ 📸 auto check-in for ${senderLabel}`);
+          break;
+        } catch (err: any) {
+          console.error(`└─ ❌ image auto check-in failed for ${senderLabel}: ${err?.message ?? err}`);
+        }
+      }
+    }
+
+    if (!textContent) continue;
 
     logFrame(time, space.id, senderLabel, kind, body, cmd.kind);
 

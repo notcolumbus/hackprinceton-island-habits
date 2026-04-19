@@ -51,6 +51,19 @@ export type Agent = {
   _id: string; phoneNumber: string; motivation: number; personalityProfile: string;
 };
 
+type PhotoAnalysisResponse = {
+  is_task_proof: boolean;
+  matched_goal_index: number | null;
+  confidence: number;
+  reason: string;
+};
+
+export type PhotoAutoCheckInResult = {
+  checkedIn: boolean;
+  reply?: string;
+  reason?: string;
+};
+
 // ── Address normalization ─────────────────────────────────────────────
 
 export function toE164Like(value: unknown): string | null {
@@ -401,6 +414,115 @@ export async function handleStatus(space: any, sender: string, spaceId?: string)
   await space.send(text(lines.join("\n")));
 }
 
+async function applyGoalCheckIn(
+  islandId: string,
+  sender: string,
+  goal: Goal,
+): Promise<{ status: "checked_in" | "already_done"; doneCount: number; totalGoals: number }> {
+  const today = todayIsoDate();
+  const preCheckIns: any[] = await convex.query("goals:getTodayCheckIns" as any, {
+    islandId,
+    phoneNumber: sender,
+    date: today,
+  });
+  const alreadyDone = preCheckIns.some((c) => c.goalId === goal._id && c.completed);
+  if (!alreadyDone) {
+    await convex.mutation("goals:checkIn" as any, {
+      goalId: goal._id,
+      islandId,
+      phoneNumber: sender,
+      date: today,
+    });
+  }
+  const [goals, checkIns] = await Promise.all([
+    fetchGoals(islandId, sender),
+    convex.query("goals:getTodayCheckIns" as any, {
+      islandId,
+      phoneNumber: sender,
+      date: today,
+    }),
+  ]);
+  const doneCount = (checkIns as any[]).filter((c) => c.completed).length;
+  return {
+    status: alreadyDone ? "already_done" : "checked_in",
+    doneCount,
+    totalGoals: goals.length,
+  };
+}
+
+async function analyzeTaskPhoto(
+  sender: string,
+  island: Island,
+  goals: Goal[],
+  imageBase64: string,
+  mimeType: string,
+): Promise<PhotoAnalysisResponse> {
+  const res = await fetch(`${BACKEND_URL}/jobs/analyze-task-photo`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sender,
+      island_name: island.name,
+      goals: goals.map((g) => g.text),
+      image_base64: imageBase64,
+      mime_type: mimeType,
+    }),
+  });
+  if (!res.ok) {
+    const raw = await res.text().catch(() => "");
+    throw new Error(`analyze-task-photo HTTP ${res.status}: ${raw}`);
+  }
+  return (await res.json()) as PhotoAnalysisResponse;
+}
+
+export async function autoCheckInFromPhoto(
+  sender: string,
+  spaceId: string,
+  imageBase64: string,
+  mimeType: string,
+): Promise<PhotoAutoCheckInResult> {
+  const island = await resolveSenderIsland(sender, spaceId);
+  if (!island) return { checkedIn: false, reason: "no-island" };
+
+  const goals = await fetchGoals(island._id, sender);
+  if (!goals.length) return { checkedIn: false, reason: "no-goals" };
+
+  let analysis: PhotoAnalysisResponse;
+  try {
+    analysis = await analyzeTaskPhoto(sender, island, goals, imageBase64, mimeType);
+  } catch (err: any) {
+    console.error("[photo] analyze-task-photo failed:", err?.message ?? err);
+    return { checkedIn: false, reason: "analysis-failed" };
+  }
+
+  if (!analysis.is_task_proof) {
+    return { checkedIn: false, reason: analysis.reason || "not-task-proof" };
+  }
+  if (typeof analysis.confidence === "number" && analysis.confidence < 0.55) {
+    return { checkedIn: false, reason: "low-confidence" };
+  }
+
+  const idx1 = analysis.matched_goal_index ?? 0;
+  if (idx1 < 1 || idx1 > goals.length) {
+    return { checkedIn: false, reason: "invalid-goal-index" };
+  }
+  const goal = goals[idx1 - 1];
+
+  try {
+    const result = await applyGoalCheckIn(island._id, sender, goal);
+    if (result.status === "already_done") {
+      return { checkedIn: false, reason: "already-done" };
+    }
+    return {
+      checkedIn: true,
+      reply: `✅ Auto check-in from your photo for "${goal.text}" (${result.doneCount}/${result.totalGoals} today) — +1 XP, +10 💰`,
+    };
+  } catch (err: any) {
+    console.error("[photo] auto check-in failed:", err?.message ?? err);
+    return { checkedIn: false, reason: "checkin-failed" };
+  }
+}
+
 export async function handleDone(space: any, sender: string, index: number, spaceId?: string): Promise<void> {
   const lookup = await lookupGoalByIndex(sender, index, spaceId);
   if (!lookup.ok) {
@@ -413,25 +535,13 @@ export async function handleDone(space: any, sender: string, index: number, spac
     }
     return;
   }
-  const today = todayIsoDate();
   try {
-    const result = await convex.mutation("goals:checkIn" as any, {
-      goalId: lookup.goal._id,
-      islandId: lookup.island._id,
-      phoneNumber: sender,
-      date: today,
-    });
-    // checkIn returns the existing record if already checked in
-    if (result && (result as any).completed) {
-      const goals = await fetchGoals(lookup.island._id, sender);
-      const checkIns: any[] = await convex.query("goals:getTodayCheckIns" as any, {
-        islandId: lookup.island._id,
-        phoneNumber: sender,
-        date: today,
-      });
-      const doneCount = checkIns.filter((c) => c.completed).length;
-      await space.send(text(`✅ "${lookup.goal.text}" done! (${doneCount}/${goals.length} today) — +1 XP, +10 💰`));
+    const result = await applyGoalCheckIn(lookup.island._id, sender, lookup.goal);
+    if (result.status === "already_done") {
+      await space.send(text(`Goal ${index} ("${lookup.goal.text}") was already checked in today.`));
+      return;
     }
+    await space.send(text(`✅ "${lookup.goal.text}" done! (${result.doneCount}/${result.totalGoals} today) — +1 XP, +10 💰`));
   } catch (err: any) {
     console.error("[/done] failed:", err?.message ?? err);
     await space.send(text("Couldn't mark that goal done. Try again."));
@@ -476,18 +586,26 @@ export async function handleChat(space: any, sender: string, body: string, space
 
   if (island) {
     try {
-      const [goals, details] = await Promise.all([
+      const [goals, details, knotContext] = await Promise.all([
         fetchGoals(island._id, sender),
         convex.query("islands:getIslandDetails" as any, { islandId: island._id }),
+        convex.query("knot:getTransactionContextForParticipant" as any, {
+          participantId: sender,
+          limit: 5,
+        }),
       ]);
       const member = (details?.members ?? []).find((m: any) => m.phoneNumber === sender);
       if (member?.displayName) playerName = member.displayName.split(/\s+/)[0];
       const goalLines = goals.length
         ? goals.map((g, i) => `  ${i + 1}. ${g.text}`).join("\n")
         : "  (none yet)";
+      const txLines = knotContext?.summary
+        ? knotContext.summary
+        : "  (none synced yet)";
       contextStr =
         `Island: ${island.name} (level ${island.islandLevel}, ${island.xp} XP)\n` +
-        `Sender goals:\n${goalLines}`;
+        `Sender goals:\n${goalLines}\n` +
+        `Recent transactions:\n${txLines}`;
     } catch (err: any) {
       console.error("[chat] failed to load context:", err?.message ?? err);
     }
@@ -519,6 +637,50 @@ export async function handleChat(space: any, sender: string, body: string, space
 
   await space.send(text(reply));
   appendMessage(spaceId, "agent", reply);
+}
+
+export async function syncKnotTransactionsOnBoot(): Promise<void> {
+  try {
+    const members: any[] = await convex.query("jobQueries:getAllMembersForReminder" as any, {});
+    const islandIds = [...new Set(
+      members
+        .map((m) => m?.island?._id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0)
+    )];
+
+    if (islandIds.length === 0) {
+      console.log("[knot-sync] no islands found on boot");
+      return;
+    }
+
+    for (const islandId of islandIds) {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/knot/sync-island`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ islandId }),
+        });
+        if (!res.ok) {
+          const raw = await res.text().catch(() => "");
+          console.error(`[knot-sync] island=${islandId} failed HTTP ${res.status}: ${raw}`);
+          continue;
+        }
+        const data = await res.json() as {
+          synced_participants?: number;
+          total_transactions?: number;
+          skipped_participants?: number;
+        };
+        console.log(
+          `[knot-sync] island=${islandId} synced=${data.synced_participants ?? 0}` +
+          ` skipped=${data.skipped_participants ?? 0} tx=${data.total_transactions ?? 0}`,
+        );
+      } catch (err: any) {
+        console.error(`[knot-sync] island=${islandId} error:`, err?.message ?? err);
+      }
+    }
+  } catch (err: any) {
+    console.error("[knot-sync] bootstrap failed:", err?.message ?? err);
+  }
 }
 
 // ── Framed console log helper ─────────────────────────────────────────
