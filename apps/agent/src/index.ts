@@ -23,6 +23,7 @@ import {
   logFrame,
 } from "./router.js";
 import { appendMessage } from "./state/chat-history.js";
+import { isTagged } from "./photon/mentions.js";
 import { startHttpServer } from "./server.js";
 
 async function main(): Promise<void> {
@@ -60,6 +61,14 @@ async function main(): Promise<void> {
     if (cmd.kind === "none") {
       if (!resolvedSender) {
         console.log(`└─ (no command matched, no sender — ignored)`);
+        continue;
+      }
+      if (!body.trim()) {
+        console.log(`└─ (empty body — tapback or system message, skipped)`);
+        continue;
+      }
+      if (!isTagged(body)) {
+        console.log(`└─ (no "isla" mention — skipped)`);
         continue;
       }
       try {
