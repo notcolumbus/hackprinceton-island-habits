@@ -1,0 +1,51 @@
+name: island-habits-ai
+region: nyc
+services:
+  - name: ai-backend
+    github:
+      repo: JzJoker/hackprinceton-island-habits
+      branch: main
+      deploy_on_push: false
+    source_dir: apps/backend
+    dockerfile_path: Dockerfile
+    http_port: 5001
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    health_check:
+      http_path: /healthz
+      initial_delay_seconds: 20
+      period_seconds: 15
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 4
+    envs:
+      - key: PORT
+        scope: RUN_TIME
+        value: "5001"
+      - key: STRICT_STARTUP_VALIDATION
+        scope: RUN_TIME
+        value: "true"
+      - key: K2_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+        value: REPLACE_ME
+      - key: K2_API_URL
+        scope: RUN_TIME
+        value: https://api.k2think.ai/v1/chat/completions
+      - key: K2_MODEL
+        scope: RUN_TIME
+        value: MBZUAI-IFM/K2-Think-v2
+      - key: ELEVENLABS_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+        value: REPLACE_ME_OPTIONAL
+      - key: ELEVENLABS_MODEL_ID
+        scope: RUN_TIME
+        value: eleven_multilingual_v2
+      - key: CONVEX_URL
+        scope: RUN_TIME
+        value: https://befitting-mink-857.convex.cloud
+      - key: AGENT_URL
+        scope: RUN_TIME
+        value: http://agent.internal:3001
+

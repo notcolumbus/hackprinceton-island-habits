@@ -1,16 +1,19 @@
 import os
 import requests
 
+from jobs.http_utils import post_json_with_retry
+
 AGENT_URL = os.environ.get("AGENT_URL", "http://localhost:3001")
 
 
 def send_message(phone: str, message: str) -> None:
     try:
-        resp = requests.post(
+        resp = post_json_with_retry(
             f"{AGENT_URL}/send",
             headers={"Content-Type": "application/json"},
             json={"to": phone, "message": message},
             timeout=30,
+            max_attempts=2,
         )
         resp.raise_for_status()
         print(f"[photon] sent to {phone} ({resp.status_code})")
@@ -24,11 +27,12 @@ def send_message(phone: str, message: str) -> None:
 
 def send_group_message(phones: list[str], message: str) -> None:
     try:
-        resp = requests.post(
+        resp = post_json_with_retry(
             f"{AGENT_URL}/send-group",
             headers={"Content-Type": "application/json"},
             json={"participants": phones, "message": message},
             timeout=30,
+            max_attempts=2,
         )
         resp.raise_for_status()
         print(f"[photon] sent group to {len(phones)} phones ({resp.status_code})")
@@ -49,11 +53,12 @@ def send_island_message(island_id: str, message: str) -> None:
     islands (e.g. two test islands created by the same trio).
     """
     try:
-        resp = requests.post(
+        resp = post_json_with_retry(
             f"{AGENT_URL}/send-island",
             headers={"Content-Type": "application/json"},
             json={"islandId": island_id, "message": message},
             timeout=30,
+            max_attempts=2,
         )
         resp.raise_for_status()
         print(f"[photon] sent to island {island_id} ({resp.status_code})")

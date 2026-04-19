@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Optional, Tuple
 
-import requests
+from jobs.http_utils import post_json_with_retry
 
 K2_API_URL = os.environ.get("K2_API_URL", "https://api.k2think.ai/v1/chat/completions")
 K2_API_KEY = os.environ.get("K2_API_KEY", "")
@@ -18,7 +18,10 @@ def _load(name: str) -> str:
 
 
 def call_k2(system: str, user: str, max_tokens: int = 200) -> Tuple[str, Optional[str]]:
-    r = requests.post(
+    if not K2_API_KEY:
+        raise RuntimeError("Missing K2_API_KEY")
+
+    r = post_json_with_retry(
         K2_API_URL,
         headers={"Authorization": f"Bearer {K2_API_KEY}", "Content-Type": "application/json"},
         json={
@@ -30,6 +33,7 @@ def call_k2(system: str, user: str, max_tokens: int = 200) -> Tuple[str, Optiona
             "max_tokens": max_tokens,
         },
         timeout=30,
+        max_attempts=3,
     )
     r.raise_for_status()
     content = r.json()["choices"][0]["message"]["content"]

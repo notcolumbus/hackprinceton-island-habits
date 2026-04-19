@@ -1,10 +1,10 @@
 import os
 import random
 
-import requests
 from flask import Response, jsonify, request
 
 from jobs import jobs_bp
+from jobs.http_utils import post_json_with_retry
 
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 ELEVENLABS_MODEL_ID = os.getenv("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
@@ -40,7 +40,7 @@ def agent_tts():
     voice_ids = _voice_pool()
     voice_id = random.choice(voice_ids)
 
-    response = requests.post(
+    response = post_json_with_retry(
         f"{ELEVENLABS_BASE_URL}/text-to-speech/{voice_id}",
         params={"output_format": "mp3_44100_128"},
         headers={
@@ -57,6 +57,7 @@ def agent_tts():
             },
         },
         timeout=30,
+        max_attempts=3,
     )
 
     if not response.ok:
