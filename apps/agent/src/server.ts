@@ -5,7 +5,7 @@ import { convex } from "./router.js";
 
 type SpectrumApp = Awaited<ReturnType<typeof import("./photon/app.js")["createApp"]>>;
 
-export const PORT = 3001;
+export const PORT = Number(process.env.PORT ?? 3001);
 
 // Resolve an islandId to every phone on that island. Uses `islandMembers`
 // (full roster, updated whenever anyone joins via iMessage OR the web) so
@@ -42,6 +42,12 @@ export function startHttpServer(app: SpectrumApp): http.Server {
   const im = imessage(app);
 
   const server = http.createServer(async (req, res) => {
+    if ((req.method === "GET" || req.method === "HEAD") && (req.url === "/health" || req.url === "/healthz")) {
+      res.setHeader("Content-Type", "application/json");
+      res.writeHead(200).end(JSON.stringify({ ok: true, service: "island-habits-agent" }));
+      return;
+    }
+
     if (req.method !== "POST") {
       res.writeHead(405).end(JSON.stringify({ error: "Method not allowed" }));
       return;

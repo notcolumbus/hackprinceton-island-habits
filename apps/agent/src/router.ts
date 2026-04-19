@@ -17,8 +17,8 @@ import "dotenv/config";
 
 // ── Env / config ──────────────────────────────────────────────────────
 
-export const PROJECT_ID = process.env.projid;
-export const PROJECT_SECRET = process.env.secret;
+export const PROJECT_ID = process.env.PHOTON_PROJECT_ID ?? process.env.projid;
+export const PROJECT_SECRET = process.env.PHOTON_SECRET ?? process.env.secret;
 export const CONVEX_URL = (process.env.CONVEX_URL ?? process.env.VITE_CONVEX_URL ?? "").replace(/\/+$/, "");
 export const APP_BASE_URL = (process.env.APP_BASE_URL ?? "http://localhost:5173").replace(/\/+$/, "");
 export const BACKEND_URL = (process.env.BACKEND_URL ?? "http://localhost:5001").replace(/\/+$/, "");
@@ -26,7 +26,7 @@ export const BOT_PHONE = (process.env.BOT_PHONE ?? "+14155952874").replace(/\D/g
 
 export function assertEnv(): void {
   if (!PROJECT_ID || !PROJECT_SECRET) {
-    console.error("❌ Missing projid/secret in apps/agent/.env");
+    console.error("❌ Missing PHOTON_PROJECT_ID/PHOTON_SECRET (or projid/secret) in apps/agent/.env");
     process.exit(1);
   }
   if (!CONVEX_URL) {
