@@ -31,9 +31,6 @@ export const QuestLog = () => {
             )}
             <div className="flex-1 min-w-0">
               <p className={`text-[11px] font-bold ${g.done ? "text-muted-foreground line-through" : "text-foreground"}`}>{g.text}</p>
-              <span className="text-[9px] font-black text-honey-foreground bg-honey/30 px-1.5 py-0.5 rounded-full mt-0.5 inline-block">
-                +{g.reward}🪙
-              </span>
             </div>
           </button>
         ))}

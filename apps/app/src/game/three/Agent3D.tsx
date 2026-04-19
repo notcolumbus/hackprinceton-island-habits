@@ -309,11 +309,15 @@ export const Agent3D = ({
     onPositionUpdate?.(pos.current);
 
     // ── Animation cycle — deterministic by world time ───
-    walkCycle.current += delta * (nearConstruction ? 8 : (walking ? (5.5 + pace * 20) : 0));
+    // Walk bounce speed scales strongly with mood: low mood = slow trudge, high mood = lively bounce.
+    const moodT = Math.max(0, Math.min(1, agent.mood / 100));
+    const walkCycleSpeed = nearConstruction ? 8 : (walking ? (2.5 + moodT * 6) : 0);
+    walkCycle.current += delta * walkCycleSpeed;
     const t = walkCycle.current;
     const swing = walking ? Math.sin(t) * 0.45 : 0;
+    const bounceAmp = walking ? (0.012 + moodT * 0.028) : 0.035; // low mood = barely bounces
     const bounce = (walking || nearConstruction)
-      ? Math.abs(Math.sin(t * 2)) * 0.035
+      ? Math.abs(Math.sin(t * 2)) * bounceAmp
       : Math.sin(nowMs * 0.002) * 0.008;
 
     if (leftLeg.current) leftLeg.current.rotation.x = nearConstruction ? 0 : swing;
