@@ -260,6 +260,8 @@ export interface GameBootstrapData {
   islandId?: string;
   phoneNumber?: string;
   coins?: number;
+  logs?: number;
+  rocks?: number;
   streak?: number;
   dayCount?: number;
   level?: number;

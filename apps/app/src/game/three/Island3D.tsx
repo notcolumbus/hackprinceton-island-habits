@@ -853,7 +853,7 @@ const Scene = ({
               return next;
             });
           }}
-          onGather={(agentId, resource) => {
+          onGather={(_agentId, resource) => {
             void (async () => {
               if (!islandId) return;
               try {

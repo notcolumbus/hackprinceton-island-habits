@@ -100,8 +100,8 @@ export const CheckInOverlay = () => {
 
             <div className="bg-honey-soft rounded-xl p-3 flex items-center justify-between">
               <span className="text-xs font-bold text-honey-foreground">You'll earn</span>
-              <span className="display-font text-lg font-black text-honey-foreground flex items-center gap-1">
-                <Coins className="h-4 w-4" /> +{pendingCheckIn.reward}
+              <span className="display-font text-sm md:text-base font-black text-honey-foreground">
+                🪵 +1 · 🪨 +1 · XP +{pendingCheckIn.reward}
               </span>
             </div>
 
