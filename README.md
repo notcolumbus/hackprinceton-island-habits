@@ -45,7 +45,7 @@ cd apps/backend && python3 app.py
 cd apps/app && npm run dev
 ```
 
-Convex is hosted at `befitting-mink-857.convex.cloud` — no local Convex server needed.
+Convex is hosted at `tidy-vole-519.convex.cloud` — no local Convex server needed.
 
 ---
 

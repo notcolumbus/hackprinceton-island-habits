@@ -58,8 +58,9 @@ AGENT_SPEC = {"vcpu": 1, "memory_mib": 1024, "storage_gib": 10}
 BACKEND_TAG = "island-habits-backend"
 AGENT_TAG = "island-habits-agent"
 
-# Repo (change to your actual GitHub URL)
-REPO_URL = "https://github.com/JzJoker/hackprinceton-island-habits.git"
+# Repo and branch to deploy
+REPO_URL = "https://github.com/notcolumbus/hackprinceton-island-habits.git"
+DEPLOY_GIT_REF = os.getenv("DEPLOY_GIT_REF", "feature/resources")
 
 # Path inside the Dedalus Machine
 APP_DIR = "/home/machine/app"
@@ -71,7 +72,7 @@ ENV_VARS = {
     "KNOT_ENVIRONMENT": os.getenv("KNOT_ENVIRONMENT", "production"),
     "KNOT_CLIENT_ID": os.getenv("KNOT_CLIENT_ID", ""),
     "KNOT_SECRET": os.getenv("KNOT_SECRET", ""),
-    "CONVEX_URL": os.getenv("CONVEX_URL", "https://befitting-mink-857.convex.cloud"),
+    "CONVEX_URL": os.getenv("CONVEX_URL", "https://tidy-vole-519.convex.cloud"),
     "K2_API_KEY": os.getenv("K2_API_KEY", ""),
     "K2_API_URL": os.getenv("K2_API_URL", "https://api.k2think.ai/v1/chat/completions"),
     "K2_MODEL": os.getenv("K2_MODEL", "MBZUAI-IFM/K2-Think-v2"),
@@ -188,11 +189,17 @@ def deploy_backend(client: Dedalus, machine_id: str = None):
         "apt-get update -qq && apt-get install -y -qq python3-pip python3-venv git curl cron > /dev/null 2>&1"
     ], "Installing system packages (python3, git, curl, cron)")
 
-    # Clone or update repo
+    # Clone or update repo at the configured branch/ref.
     exec_cmd(client, machine_id, [
         "/bin/bash", "-c",
-        f"if [ -d {APP_DIR}/.git ]; then cd {APP_DIR} && git pull; else git clone {REPO_URL} {APP_DIR}; fi"
-    ], f"Cloning/updating repo from {REPO_URL}")
+        (
+            f"if [ -d {APP_DIR}/.git ]; then "
+            f"cd {APP_DIR} && git fetch origin && git checkout {DEPLOY_GIT_REF} && git pull origin {DEPLOY_GIT_REF}; "
+            f"else "
+            f"git clone --branch {DEPLOY_GIT_REF} {REPO_URL} {APP_DIR}; "
+            f"fi"
+        )
+    ], f"Cloning/updating repo from {REPO_URL} ({DEPLOY_GIT_REF})")
 
     # Install Python dependencies
     exec_cmd(client, machine_id, [
@@ -318,11 +325,17 @@ def deploy_agent(client: Dedalus, machine_id: str = None):
         "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y -qq nodejs > /dev/null 2>&1"
     ], "Installing Node.js 20 LTS")
 
-    # Clone or update repo
+    # Clone or update repo at the configured branch/ref.
     exec_cmd(client, machine_id, [
         "/bin/bash", "-c",
-        f"if [ -d {APP_DIR}/.git ]; then cd {APP_DIR} && git pull; else git clone {REPO_URL} {APP_DIR}; fi"
-    ], f"Cloning/updating repo")
+        (
+            f"if [ -d {APP_DIR}/.git ]; then "
+            f"cd {APP_DIR} && git fetch origin && git checkout {DEPLOY_GIT_REF} && git pull origin {DEPLOY_GIT_REF}; "
+            f"else "
+            f"git clone --branch {DEPLOY_GIT_REF} {REPO_URL} {APP_DIR}; "
+            f"fi"
+        )
+    ], f"Cloning/updating repo ({DEPLOY_GIT_REF})")
 
     # Install npm dependencies
     exec_cmd(client, machine_id, [

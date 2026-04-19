@@ -115,7 +115,7 @@ async function main(): Promise<void> {
   if (!CONVEX_URL) {
     console.error(
       "\n❌ CONVEX_URL not set. Add it to apps/agent/.env, e.g.:\n" +
-        "   CONVEX_URL=https://befitting-mink-857.convex.cloud",
+        "   CONVEX_URL=https://tidy-vole-519.convex.cloud",
     );
     process.exit(1);
   }
