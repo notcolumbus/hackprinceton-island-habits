@@ -151,7 +151,7 @@ const seededFrom = (text: string) => {
 const hashOf = (text: string) => {
   let seed = 5381
   for (let i = 0; i < text.length; i++) {
-    seed = ((seed << 5) + seed + text.charCodeAt(i)) | 0
+    seed = Math.trunc((seed << 5) + seed + text.charCodeAt(i))
   }
   return seed >>> 0
 }

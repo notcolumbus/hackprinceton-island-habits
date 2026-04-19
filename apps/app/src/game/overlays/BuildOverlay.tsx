@@ -2,6 +2,105 @@ import { X, Hammer, Lock, Coins, Heart, AlertCircle } from "lucide-react";
 import { useGame, BUILD_LIBRARY } from "../state";
 import { useOverlayClose } from "@/hooks/useOverlayClose";
 
+type BuildItem = typeof BUILD_LIBRARY[number];
+type BuildTier = "common" | "rare" | "epic" | "legendary";
+
+const TIER_STYLE: Record<BuildTier, string> = {
+  common: "from-secondary-soft/70 to-secondary-soft/30 border-secondary",
+  rare: "from-primary-soft/70 to-primary-soft/30 border-primary",
+  epic: "from-accent-soft/70 to-accent-soft/30 border-accent",
+  legendary: "from-honey-soft/80 to-honey-soft/40 border-honey",
+};
+
+const TIER_GLOW: Record<BuildTier, string> = {
+  common: "shadow-[0_4px_20px_-6px_hsl(var(--secondary)/0.4)]",
+  rare: "shadow-[0_4px_20px_-6px_hsl(var(--primary)/0.5)]",
+  epic: "shadow-[0_4px_20px_-6px_hsl(var(--accent)/0.5)]",
+  legendary: "shadow-[0_4px_24px_-4px_hsl(var(--honey)/0.7)]",
+};
+
+const resolveTier = (cost: number): BuildTier => {
+  if (cost < 150) return "common";
+  if (cost < 300) return "rare";
+  if (cost < 600) return "epic";
+  return "legendary";
+};
+
+const TierBadge = ({ tier }: { tier: BuildTier }) => (
+  <span
+    className={`absolute -top-1.5 -right-1.5 z-10 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md border ${
+      tier === "legendary" ? "bg-honey text-honey-foreground border-honey-foreground/20" :
+      tier === "epic" ? "bg-accent text-accent-foreground border-accent-foreground/20" :
+      tier === "rare" ? "bg-primary text-primary-foreground border-primary-foreground/20" :
+      "bg-secondary text-secondary-foreground border-secondary-foreground/20"
+    }`}
+  >
+    {tier}
+  </span>
+);
+
+const BuildOptionCard = ({
+  item,
+  locked,
+  tooExpensive,
+  isPlacing,
+  lockReason,
+  onSelect,
+}: {
+  item: BuildItem;
+  locked: boolean;
+  tooExpensive: boolean;
+  isPlacing: boolean;
+  lockReason: string | null;
+  onSelect: () => void;
+}) => {
+  const tier = resolveTier(item.cost);
+  return (
+    <button
+      key={item.type}
+      disabled={locked || tooExpensive}
+      onClick={onSelect}
+      className={`group relative text-left p-3 rounded-2xl border-2 transition-all duration-200 ${
+        locked
+          ? "bg-muted/40 border-muted opacity-60"
+          : tooExpensive
+          ? "bg-card border-border opacity-70"
+          : isPlacing
+          ? "bg-primary-soft border-primary shadow-float -translate-y-1 scale-[1.02]"
+          : `bg-card border-border hover:border-primary hover:-translate-y-1 hover:scale-[1.03] ${TIER_GLOW[tier]} cursor-pointer`
+      }`}
+    >
+      {!locked && !tooExpensive && <TierBadge tier={tier} />}
+
+      <div className={`relative aspect-square w-full rounded-xl bg-gradient-to-br ${TIER_STYLE[tier]} flex items-center justify-center text-5xl mb-2 overflow-hidden border`}>
+        <span className="transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6 drop-shadow-[0_4px_8px_rgba(0,0,0,0.2)]">{item.emoji}</span>
+        <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
+      <p className="font-extrabold text-sm leading-tight">{item.name}</p>
+      <div className="flex items-center justify-between mt-1.5">
+        <span className={`text-xs font-black flex items-center gap-1 ${tooExpensive ? "text-destructive" : "text-honey-foreground"}`}>
+          <Coins className="h-3 w-3" /> {item.cost}
+        </span>
+        <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded">⌀{item.radius.toFixed(1)}</span>
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-1">
+        {item.rules.likes?.slice(0, 2).map((rule, index) => (
+          <span key={index} className="text-[9px] font-bold text-primary bg-primary-soft px-1.5 py-0.5 rounded-full">♥ {rule.type} +{rule.pts}</span>
+        ))}
+        {item.rules.dislikes?.slice(0, 1).map((rule, index) => (
+          <span key={index} className="text-[9px] font-bold text-destructive bg-accent-soft px-1.5 py-0.5 rounded-full">✗ {rule.type} {rule.pts}</span>
+        ))}
+      </div>
+      {locked && (
+        <div className="absolute inset-0 rounded-2xl bg-foreground/40 backdrop-blur-[3px] flex flex-col items-center justify-center text-card font-bold text-xs gap-1.5">
+          <Lock className="h-6 w-6" />
+          <span className="bg-foreground/80 px-2 py-1 rounded text-center text-[10px]">{lockReason}</span>
+        </div>
+      )}
+    </button>
+  );
+};
+
 export const BuildOverlay = () => {
   const { screen, setScreen, coins, level, setPlacingType, placingType } = useGame();
   const { closing, close } = useOverlayClose(() => setScreen(null));
@@ -66,69 +165,16 @@ export const BuildOverlay = () => {
             const tooExpensive = !locked && coins < b.cost;
             const lockReason = lockMsg(b);
             const isPlacing = placingType === b.type;
-            const tier = b.cost < 150 ? "common" : b.cost < 300 ? "rare" : b.cost < 600 ? "epic" : "legendary";
-            const tierStyle = {
-              common: "from-secondary-soft/70 to-secondary-soft/30 border-secondary",
-              rare: "from-primary-soft/70 to-primary-soft/30 border-primary",
-              epic: "from-accent-soft/70 to-accent-soft/30 border-accent",
-              legendary: "from-honey-soft/80 to-honey-soft/40 border-honey",
-            }[tier];
-            const tierGlow = {
-              common: "shadow-[0_4px_20px_-6px_hsl(var(--secondary)/0.4)]",
-              rare: "shadow-[0_4px_20px_-6px_hsl(var(--primary)/0.5)]",
-              epic: "shadow-[0_4px_20px_-6px_hsl(var(--accent)/0.5)]",
-              legendary: "shadow-[0_4px_24px_-4px_hsl(var(--honey)/0.7)]",
-            }[tier];
-
             return (
-              <button
+              <BuildOptionCard
                 key={b.type}
-                disabled={locked || tooExpensive}
-                onClick={() => startPlacing(b.type)}
-                className={`group relative text-left p-3 rounded-2xl border-2 transition-all duration-200 ${
-                  locked
-                    ? "bg-muted/40 border-muted opacity-60"
-                    : tooExpensive
-                    ? "bg-card border-border opacity-70"
-                    : isPlacing
-                    ? "bg-primary-soft border-primary shadow-float -translate-y-1 scale-[1.02]"
-                    : `bg-card border-border hover:border-primary hover:-translate-y-1 hover:scale-[1.03] ${tierGlow} cursor-pointer`
-                }`}
-              >
-                {!locked && !tooExpensive && (
-                  <span className={`absolute -top-1.5 -right-1.5 z-10 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md border ${
-                    tier === "legendary" ? "bg-honey text-honey-foreground border-honey-foreground/20" :
-                    tier === "epic" ? "bg-accent text-accent-foreground border-accent-foreground/20" :
-                    tier === "rare" ? "bg-primary text-primary-foreground border-primary-foreground/20" :
-                    "bg-secondary text-secondary-foreground border-secondary-foreground/20"
-                  }`}>{tier}</span>
-                )}
-                <div className={`relative aspect-square w-full rounded-xl bg-gradient-to-br ${tierStyle} flex items-center justify-center text-5xl mb-2 overflow-hidden border`}>
-                  <span className="transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6 drop-shadow-[0_4px_8px_rgba(0,0,0,0.2)]">{b.emoji}</span>
-                  <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-                <p className="font-extrabold text-sm leading-tight">{b.name}</p>
-                <div className="flex items-center justify-between mt-1.5">
-                  <span className={`text-xs font-black flex items-center gap-1 ${tooExpensive ? "text-destructive" : "text-honey-foreground"}`}>
-                    <Coins className="h-3 w-3" /> {b.cost}
-                  </span>
-                  <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded">⌀{b.radius.toFixed(1)}</span>
-                </div>
-                <div className="mt-1.5 flex flex-wrap gap-1">
-                  {b.rules.likes?.slice(0, 2).map((r, i) => (
-                    <span key={i} className="text-[9px] font-bold text-primary bg-primary-soft px-1.5 py-0.5 rounded-full">♥ {r.type} +{r.pts}</span>
-                  ))}
-                  {b.rules.dislikes?.slice(0, 1).map((r, i) => (
-                    <span key={i} className="text-[9px] font-bold text-destructive bg-accent-soft px-1.5 py-0.5 rounded-full">✗ {r.type} {r.pts}</span>
-                  ))}
-                </div>
-                {locked && (
-                  <div className="absolute inset-0 rounded-2xl bg-foreground/40 backdrop-blur-[3px] flex flex-col items-center justify-center text-card font-bold text-xs gap-1.5">
-                    <Lock className="h-6 w-6" />
-                    <span className="bg-foreground/80 px-2 py-1 rounded text-center text-[10px]">{lockReason}</span>
-                  </div>
-                )}
-              </button>
+                item={b}
+                locked={locked}
+                tooExpensive={tooExpensive}
+                isPlacing={isPlacing}
+                lockReason={lockReason}
+                onSelect={() => startPlacing(b.type)}
+              />
             );
           })}
         </div>

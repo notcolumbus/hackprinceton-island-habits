@@ -11,10 +11,31 @@ K2_API_KEY = os.environ.get("K2_API_KEY", "")
 K2_MODEL = os.environ.get("K2_MODEL", "MBZUAI-IFM/K2-Think-v2")
 
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+THINK_OPEN = "<think>"
+THINK_CLOSE = "</think>"
 
 
 def _load(name: str) -> str:
     return (PROMPTS_DIR / name).read_text()
+
+
+def _split_reasoning(content: str) -> Tuple[str, Optional[str]]:
+    reasoning = None
+
+    if THINK_CLOSE in content:
+        reasoning_head, content_tail = content.split(THINK_CLOSE, 1)
+        cleaned = reasoning_head
+        if THINK_OPEN in cleaned:
+            cleaned = cleaned.split(THINK_OPEN, 1)[1]
+        reasoning = cleaned.strip() or None
+        return content_tail.strip(), reasoning
+
+    if THINK_OPEN in content:
+        content_head, reasoning_tail = content.split(THINK_OPEN, 1)
+        reasoning = reasoning_tail.strip() or None
+        return content_head.strip(), reasoning
+
+    return content, reasoning
 
 
 def call_k2(system: str, user: str, max_tokens: int = 200) -> Tuple[str, Optional[str]]:
@@ -33,20 +54,7 @@ def call_k2(system: str, user: str, max_tokens: int = 200) -> Tuple[str, Optiona
     )
     r.raise_for_status()
     content = r.json()["choices"][0]["message"]["content"]
-    reasoning = None
-
-    if "</think>" in content:
-        parts = content.split("</think>", 1)
-        reasoning_raw = parts[0]
-        content = parts[1].strip()
-        if "<think>" in reasoning_raw:
-            reasoning_raw = reasoning_raw.split("<think>", 1)[1]
-        reasoning = reasoning_raw.strip()
-    elif "<think>" in content:
-        parts = content.split("<think>", 1)
-        reasoning = parts[1].strip()
-        content = parts[0].strip()
-
+    content, reasoning = _split_reasoning(content)
     return content, reasoning
 
 

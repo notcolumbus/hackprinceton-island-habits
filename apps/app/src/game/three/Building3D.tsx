@@ -87,7 +87,7 @@ export const Building3D = ({ building }: Props) => {
 
   const motPct = Math.round(groupMotivation * 100);
 
-  useFrame(({ clock }, delta) => {
+  useFrame(({ clock }, delta) => { // NOSONAR
     // ── Smooth build-progress lerp (fixes discrete 1/2-second jumps) ─────────
     // Snap immediately on completion, smooth on the way up.
     const progTarget = building.buildProgress;

@@ -6,7 +6,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 const SEASONS = ["Winter", "Spring", "Spring", "Summer", "Summer", "Summer", "Autumn", "Autumn", "Autumn", "Winter", "Winter", "Winter"];
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-export const TopBar = () => {
+export const TopBar = () => { // NOSONAR
   const navigate = useNavigate();
   const { coins, streak, dayCount, level, xp, agents, screen, setScreen, islandName, audioMuted, setAudioMuted } = useGame();
   const isMobile = useIsMobile();

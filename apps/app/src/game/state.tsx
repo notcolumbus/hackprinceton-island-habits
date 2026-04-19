@@ -328,6 +328,62 @@ const seedChats = (agents: Agent[]): Record<string, ChatMsg[]> =>
 const dist = (a: [number, number], b: [number, number]) =>
   Math.hypot(a[0] - b[0], a[1] - b[1]);
 
+const WATER_EDGE_SAMPLES = 8;
+
+const hasNearbyWater = (
+  pos: [number, number],
+  range: number,
+  islandRadius: number,
+) => {
+  for (let i = 0; i < WATER_EDGE_SAMPLES; i++) {
+    const angle = (i / WATER_EDGE_SAMPLES) * Math.PI * 2;
+    const sample: [number, number] = [
+      pos[0] + Math.cos(angle) * range,
+      pos[1] + Math.sin(angle) * range,
+    ];
+    if (Math.hypot(sample[0], sample[1]) > islandRadius) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const countRuleMatches = (
+  rule: NonNullable<BuildOption["rules"]["likes"]>[number],
+  pos: [number, number],
+  buildings: Building[],
+  scenery: Scenery[],
+  islandRadius: number,
+) => {
+  if (rule.type === "water") {
+    return hasNearbyWater(pos, rule.range, islandRadius) ? 1 : 0;
+  }
+  if (rule.type === "tree" || rule.type === "rock" || rule.type === "flower") {
+    return scenery.filter((s) => s.type === rule.type && dist(s.pos, pos) <= rule.range).length;
+  }
+  return buildings.filter((b) => b.type === rule.type && dist(b.pos, pos) <= rule.range).length;
+};
+
+const applyPlacementRules = (
+  rules: NonNullable<BuildOption["rules"]["likes"]>,
+  sign: 1 | -1,
+  pos: [number, number],
+  buildings: Building[],
+  scenery: Scenery[],
+  islandRadius: number,
+  breakdown: { label: string; pts: number }[],
+) => {
+  let delta = 0;
+  for (const rule of rules) {
+    const count = countRuleMatches(rule, pos, buildings, scenery, islandRadius);
+    if (count <= 0) continue;
+    const pts = rule.pts * count;
+    delta += pts;
+    breakdown.push({ label: `${sign > 0 ? "♥" : "✗"} ${rule.type} ×${count}`, pts });
+  }
+  return delta;
+};
+
 // Detect which district a world position belongs to
 export const districtAt = (pos: [number, number], districts: District[]): DistrictId | null => {
   for (const d of districts) {
@@ -364,31 +420,12 @@ export const scorePlacement = (
   // Score by rules
   const breakdown: { label: string; pts: number }[] = [];
   let score = 0;
-  const apply = (rules: NonNullable<BuildOption["rules"]["likes"]>, sign: 1 | -1) => {
-    for (const r of rules) {
-      let count = 0;
-      if (r.type === "tree" || r.type === "rock" || r.type === "flower") {
-        count = scenery.filter((s) => s.type === r.type && dist(s.pos, pos) <= r.range).length;
-      } else if (r.type === "water") {
-        // water = anywhere near island edge
-        const samples = 8;
-        for (let i = 0; i < samples; i++) {
-          const a = (i / samples) * Math.PI * 2;
-          const sp: [number, number] = [pos[0] + Math.cos(a) * r.range, pos[1] + Math.sin(a) * r.range];
-          if (Math.hypot(sp[0], sp[1]) > islandRadius) { count++; break; }
-        }
-      } else {
-        count = buildings.filter((b) => b.type === r.type && dist(b.pos, pos) <= r.range).length;
-      }
-      if (count > 0) {
-        const pts = r.pts * count;
-        score += pts;
-        breakdown.push({ label: `${sign > 0 ? "♥" : "✗"} ${r.type} ×${count}`, pts });
-      }
-    }
-  };
-  if (opt.rules.likes) apply(opt.rules.likes, 1);
-  if (opt.rules.dislikes) apply(opt.rules.dislikes, -1);
+  if (opt.rules.likes) {
+    score += applyPlacementRules(opt.rules.likes, 1, pos, buildings, scenery, islandRadius, breakdown);
+  }
+  if (opt.rules.dislikes) {
+    score += applyPlacementRules(opt.rules.dislikes, -1, pos, buildings, scenery, islandRadius, breakdown);
+  }
 
   return { score, valid: true, breakdown };
 };

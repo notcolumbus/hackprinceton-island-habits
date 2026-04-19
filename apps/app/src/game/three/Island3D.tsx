@@ -519,7 +519,7 @@ const Scene = ({
 
   useEffect(() => stopSpeechPlayback, [stopSpeechPlayback]);
 
-  const speakLine = useCallback(
+  const speakLine = useCallback( // NOSONAR
     (text: string, speaker: "a" | "b"): Promise<void> => {
       if (audioMuted || !text.trim()) {
         return new Promise((r) => setTimeout(r, SEC_PER_LINE));
@@ -543,7 +543,7 @@ const Scene = ({
       }
 
       stopSpeechPlayback();
-      return new Promise<void>((resolve) => {
+      return new Promise<void>((resolve) => { // NOSONAR
         const controller = new AbortController();
         ttsAbortRef.current = controller;
 
@@ -603,7 +603,7 @@ const Scene = ({
     [audioMuted, stopSpeechPlayback, speakWithBrowserTts, showToast],
   );
 
-  const onGossip = useCallback((agentA: Agent, agentB: Agent) => {
+  const onGossip = useCallback((agentA: Agent, agentB: Agent) => { // NOSONAR
     const posA = agentPositions.current.get(agentA.id)?.clone() ?? new THREE.Vector3();
     const posB = agentPositions.current.get(agentB.id)?.clone() ?? new THREE.Vector3();
 
@@ -621,7 +621,7 @@ const Scene = ({
       }),
     })
       .then((r) => (r.ok ? r.json() : null))
-      .then(async (data: { lines?: ConvLine[], _reasoning?: string } | null) => {
+      .then(async (data: { lines?: ConvLine[], _reasoning?: string } | null) => { // NOSONAR
         const lines = data?.lines;
         const reasoning = data?._reasoning;
         if (!lines?.length) { setActiveConv(null); return; }

@@ -163,7 +163,80 @@ async function sendMessage(address: string, customText?: string) {
   await app.stop();
 }
 
-async function listenForMessages() {
+async function sendStartHelp(space: any) {
+  await space.send(
+    text(
+      "Commands:\n" +
+      "- 'done' - Mark today's goal as complete\n" +
+      "- 'status' - Check status\n" +
+      "- 'help' - Show this message"
+    )
+  );
+}
+
+async function handleStartCommand(space: any, message: any) {
+  if (!CONVEX_URL) {
+    await space.send(text("Missing CONVEX_URL in agent env. I can't create a room code yet."));
+    console.log("  -> Missing CONVEX_URL\n");
+    return;
+  }
+
+  try {
+    const convex = new ConvexHttpClient(CONVEX_URL);
+    const phoneNumbers = collectPhones(space as any, message as any);
+    if (!phoneNumbers.length) {
+      await space.send(
+        text(
+          "Couldn't detect group member phone numbers. Make sure this is a group iMessage thread."
+        )
+      );
+      console.log("  -> No valid participant phones\n");
+      return;
+    }
+
+    const result = await (convex as any).mutation("islands:createIsland", { phoneNumbers });
+    const code = result.code as string;
+    const gameLink = `http://localhost:5173/onboarding?code=${code}`;
+
+    await space.send(text(`Island Habits started.\n\nRoom Code: ${code}\nJoin: ${gameLink}`));
+    console.log(`  -> Created island code ${code}\n`);
+  } catch (err: any) {
+    await space.send(text("Failed to create room code. Try /start again."));
+    console.log(`  -> /start error: ${err?.message ?? String(err)}\n`);
+  }
+}
+
+async function handlePlainTextMessage(space: any, message: any, textBody: string) {
+  const reply = textBody.toLowerCase();
+
+  if (reply.trim() === "/start") {
+    await handleStartCommand(space, message);
+    return;
+  }
+  if (reply === "done" || reply === "completed") {
+    await message.react(imessage.tapbacks.love);
+    await space.send(text("Great job! Your goal has been marked as complete for today."));
+    console.log("  -> Reacted + confirmed completion\n");
+    return;
+  }
+  if (reply === "status") {
+    await space.send(text("Status: 3 buildings complete, 2 under construction. Team motivation: 78/100."));
+    console.log("  -> Sent status\n");
+    return;
+  }
+  if (reply === "help") {
+    await sendStartHelp(space);
+    console.log("  -> Sent help\n");
+    return;
+  }
+
+  await space.responding(async () => {
+    await space.send(text(`Received: "${textBody}". Reply 'help' for commands.`));
+  });
+  console.log("  -> Echoed\n");
+}
+
+async function listenForMessages() { // NOSONAR
   console.log("=== Photon Agent - Listening Mode ===\n");
   console.log("Agent phone: +1 (415) 595-2874");
   console.log("Text that number from your iPhone to test.\n");
@@ -185,66 +258,7 @@ async function listenForMessages() {
 
     if (content?.type === "plain_text") {
       console.log(`  Text: "${content.text}"`);
-
-      const reply = content.text.toLowerCase();
-
-      if (reply.trim() === "/start") {
-        if (!CONVEX_URL) {
-          await space.send(text("Missing CONVEX_URL in agent env. I can't create a room code yet."));
-          console.log("  -> Missing CONVEX_URL\n");
-          continue;
-        }
-
-        try {
-          const convex = new ConvexHttpClient(CONVEX_URL);
-          const phoneNumbers = collectPhones(space as any, message as any);
-          if (!phoneNumbers.length) {
-            await space.send(
-              text(
-                "Couldn't detect group member phone numbers. Make sure this is a group iMessage thread."
-              )
-            );
-            console.log("  -> No valid participant phones\n");
-            continue;
-          }
-
-          const result = await (convex as any).mutation("islands:createIsland", {
-            phoneNumbers,
-          });
-          const code = result.code as string;
-          const gameLink = `http://localhost:5173/onboarding?code=${code}`;
-
-          await space.send(
-            text(
-              `Island Habits started.\n\nRoom Code: ${code}\nJoin: ${gameLink}`
-            )
-          );
-          console.log(`  -> Created island code ${code}\n`);
-        } catch (err: any) {
-          await space.send(text("Failed to create room code. Try /start again."));
-          console.log(`  -> /start error: ${err?.message ?? String(err)}\n`);
-        }
-      } else if (reply === "done" || reply === "completed") {
-        await message.react(imessage.tapbacks.love);
-        await space.send(text("Great job! Your goal has been marked as complete for today."));
-        console.log("  -> Reacted + confirmed completion\n");
-      } else if (reply === "status") {
-        await space.send(text("Status: 3 buildings complete, 2 under construction. Team motivation: 78/100."));
-        console.log("  -> Sent status\n");
-      } else if (reply === "help") {
-        await space.send(text(
-          "Commands:\n" +
-          "- 'done' - Mark today's goal as complete\n" +
-          "- 'status' - Check status\n" +
-          "- 'help' - Show this message"
-        ));
-        console.log("  -> Sent help\n");
-      } else {
-        await space.responding(async () => {
-          await space.send(text(`Received: "${content.text}". Reply 'help' for commands.`));
-        });
-        console.log("  -> Echoed\n");
-      }
+      await handlePlainTextMessage(space, message, content.text);
     } else if (content?.type === "attachment") {
       console.log(`  Attachment: ${content.name} (${content.mimeType})`);
       await space.send(text("Got your attachment!"));

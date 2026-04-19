@@ -75,10 +75,7 @@ def _handle_api_error(e: Exception):
         print(f"   ❌  API error: {type(e).__name__}: {err_str[:200]}")
 
 
-def create_and_test(client: Dedalus, keep: bool):
-    """Create a machine, run whoami, optionally clean up."""
-    print("🚀  Creating Dedalus Machine (1 vCPU, 1024 MiB RAM, 10 GiB disk)...")
-    print(f"   Base URL: {DCS_BASE_URL}")
+def _create_machine_with_retry(client: Dedalus):
     dm = None
     for attempt in range(5):
         try:
@@ -97,64 +94,78 @@ def create_and_test(client: Dedalus, keep: bool):
     if dm is None:
         print("   ❌  Failed to create machine after 5 attempts")
         sys.exit(1)
-    machine_id = dm.machine_id
-    print(f"   Machine ID: {machine_id}")
+    return dm
 
-    # Wait for running state
+
+def _wait_until_running(client: Dedalus, machine_id: str):
     print("⏳  Waiting for machine to reach 'running' state...")
     for i in range(60):
         dm = client.machines.retrieve(machine_id=machine_id)
         phase = dm.status.phase
         if phase == "running":
             print(f"   ✅  Machine is running! (took ~{i}s)")
-            break
+            return
         if phase in ("failed", "error"):
             print(f"   ❌  Machine entered '{phase}' state")
             sys.exit(1)
         time.sleep(1)
-    else:
-        print("   ❌  Timed out waiting for machine to start")
-        sys.exit(1)
+    print("   ❌  Timed out waiting for machine to start")
+    sys.exit(1)
+
+
+def _run_smoke_execution(client: Dedalus, machine_id: str):
+    print("\n📡  Running 'whoami && uname -a' on the machine...")
+    execution = client.machines.executions.create(
+        machine_id=machine_id,
+        command=["/bin/bash", "-c", "whoami && uname -a && echo '---' && free -h && df -h /home/machine"],
+    )
+    execution_id = execution.execution_id
+    print(f"   Execution ID: {execution_id}")
+
+    for _ in range(30):
+        execution = client.machines.executions.retrieve(
+            machine_id=machine_id,
+            execution_id=execution_id,
+        )
+        if execution.status in ("succeeded", "failed"):
+            break
+        time.sleep(0.5)
+
+    output = client.machines.executions.output(
+        machine_id=machine_id,
+        execution_id=execution_id,
+    )
+    print(f"\n   Status: {execution.status}")
+    print(f"   stdout:\n{output.stdout}")
+    if output.stderr:
+        print(f"   stderr:\n{output.stderr}")
+
+
+def _finalize_machine(client: Dedalus, machine_id: str, keep: bool):
+    if keep:
+        print(f"\n🏝️  Machine {machine_id} is running. Use it for deployment!")
+        return
+    print(f"\n🧹  Sleeping machine {machine_id} to save credits...")
+    client.machines.update(machine_id=machine_id, desired_state="sleeping")
+    print("   ✅  Machine is sleeping (filesystem persisted, no compute charges)")
+
+
+def create_and_test(client: Dedalus, keep: bool):
+    """Create a machine, run whoami, optionally clean up."""
+    print("🚀  Creating Dedalus Machine (1 vCPU, 1024 MiB RAM, 10 GiB disk)...")
+    print(f"   Base URL: {DCS_BASE_URL}")
+    dm = _create_machine_with_retry(client)
+    machine_id = dm.machine_id
+    print(f"   Machine ID: {machine_id}")
+
+    _wait_until_running(client, machine_id)
 
     # Wait for guest agent to initialize (per openclaw reference)
     print("   ⏳  Waiting 5s for guest agent...")
     time.sleep(5)
 
-    # Run a test command
-    print("\n📡  Running 'whoami && uname -a' on the machine...")
-    exc = client.machines.executions.create(
-        machine_id=machine_id,
-        command=["/bin/bash", "-c", "whoami && uname -a && echo '---' && free -h && df -h /home/machine"],
-    )
-    execution_id = exc.execution_id
-    print(f"   Execution ID: {execution_id}")
-
-    # Wait for execution to complete
-    for i in range(30):
-        exc = client.machines.executions.retrieve(
-            machine_id=machine_id,
-            execution_id=execution_id,
-        )
-        if exc.status in ("succeeded", "failed"):
-            break
-        time.sleep(0.5)
-
-    # Get output
-    output = client.machines.executions.output(
-        machine_id=machine_id,
-        execution_id=execution_id,
-    )
-    print(f"\n   Status: {exc.status}")
-    print(f"   stdout:\n{output.stdout}")
-    if output.stderr:
-        print(f"   stderr:\n{output.stderr}")
-
-    if keep:
-        print(f"\n🏝️  Machine {machine_id} is running. Use it for deployment!")
-    else:
-        print(f"\n🧹  Sleeping machine {machine_id} to save credits...")
-        client.machines.update(machine_id=machine_id, desired_state="sleeping")
-        print("   ✅  Machine is sleeping (filesystem persisted, no compute charges)")
+    _run_smoke_execution(client, machine_id)
+    _finalize_machine(client, machine_id, keep)
 
     return machine_id
 
