@@ -65,6 +65,8 @@ REPO_URL = "https://github.com/JzJoker/hackprinceton-island-habits.git"
 APP_DIR = "/home/machine/app"
 BACKEND_DIR = f"{APP_DIR}/apps/backend"
 AGENT_DIR = f"{APP_DIR}/apps/agent"
+BASH = "/bin/bash"
+MACHINE_STATE_FILE = ".dedalus_machines.json"
 
 # Environment variables to inject (read from local .env)
 ENV_VARS = {
@@ -162,7 +164,7 @@ def write_env_file(client: Dedalus, machine_id: str, target_dir: str, env_vars: 
     for line in lines[1:]:
         cmd_parts.append(f"echo '{line}' >> {target_dir}/.env")
     cmd = " && ".join(cmd_parts)
-    exec_cmd(client, machine_id, ["/bin/bash", "-c", cmd], "Writing .env file")
+    exec_cmd(client, machine_id, [BASH, "-c", cmd], "Writing .env file")
 
 
 # ── Deploy Backend ────────────────────────────────────────────────────
@@ -184,19 +186,19 @@ def deploy_backend(client: Dedalus, machine_id: str = None):
 
     # Install system dependencies
     exec_cmd(client, machine_id, [
-        "/bin/bash", "-c",
+        BASH, "-c",
         "apt-get update -qq && apt-get install -y -qq python3-pip python3-venv git curl cron > /dev/null 2>&1"
     ], "Installing system packages (python3, git, curl, cron)")
 
     # Clone or update repo
     exec_cmd(client, machine_id, [
-        "/bin/bash", "-c",
+        BASH, "-c",
         f"if [ -d {APP_DIR}/.git ]; then cd {APP_DIR} && git pull; else git clone {REPO_URL} {APP_DIR}; fi"
     ], f"Cloning/updating repo from {REPO_URL}")
 
     # Install Python dependencies
     exec_cmd(client, machine_id, [
-        "/bin/bash", "-c",
+        BASH, "-c",
         f"cd {BACKEND_DIR} && pip3 install -r requirements.txt -q"
     ], "Installing Python dependencies")
 
@@ -205,13 +207,13 @@ def deploy_backend(client: Dedalus, machine_id: str = None):
 
     # Kill any existing Flask process
     exec_cmd(client, machine_id, [
-        "/bin/bash", "-c",
+        BASH, "-c",
         "pkill -f 'python3 app.py' 2>/dev/null || true"
     ], "Stopping previous Flask process (if any)")
 
     # Write startup script (persists across sleep/wake)
     exec_cmd(client, machine_id, [
-        "/bin/bash", "-c",
+        BASH, "-c",
         f"echo '#!/bin/bash' > {BACKEND_DIR}/start.sh && "
         f"echo 'cd {BACKEND_DIR}' >> {BACKEND_DIR}/start.sh && "
         f"echo 'exec python3 app.py > /tmp/backend.log 2>&1' >> {BACKEND_DIR}/start.sh && "
@@ -220,14 +222,14 @@ def deploy_backend(client: Dedalus, machine_id: str = None):
 
     # Start Flask server (setsid for reliable detach through exec API)
     exec_cmd(client, machine_id, [
-        "/bin/bash", "-c",
+        BASH, "-c",
         f"setsid {BACKEND_DIR}/start.sh </dev/null &>/dev/null & disown && sleep 3 && echo 'launched'"
     ], "Starting Flask server on port 5001")
 
     # Verify Flask is running
     time.sleep(2)
     health = exec_cmd(client, machine_id, [
-        "/bin/bash", "-c",
+        BASH, "-c",
         "curl -s http://localhost:5001/health || echo 'HEALTH_CHECK_FAILED'"
     ], "Health check")
 
@@ -246,13 +248,13 @@ def deploy_backend(client: Dedalus, machine_id: str = None):
         f"0 * * * * curl -s -X POST http://localhost:5001/jobs/build-progress-tick >> /tmp/cron.log 2>&1\n"
     )
     exec_cmd(client, machine_id, [
-        "/bin/bash", "-c",
+        BASH, "-c",
         f"echo '{cron_entries}' | crontab - && service cron start 2>/dev/null || cron"
     ], "Installing crontab entries and starting cron daemon")
 
     # Verify cron
     crontab_out = exec_cmd(client, machine_id, [
-        "/bin/bash", "-c", "crontab -l"
+        BASH, "-c", "crontab -l"
     ], "Verifying crontab")
     print(f"\n   📅  Active crontab:\n{crontab_out}")
 
@@ -277,10 +279,10 @@ def deploy_backend(client: Dedalus, machine_id: str = None):
     print(f"{'=' * 60}")
 
     # Save machine ID for later use
-    with open(".dedalus_machines.json", "w") as f:
+    with open(MACHINE_STATE_FILE, "w") as f:
         existing = {}
         try:
-            with open(".dedalus_machines.json", "r") as r:
+            with open(MACHINE_STATE_FILE, "r") as r:
                 existing = json.load(r)
         except (FileNotFoundError, json.JSONDecodeError):
             pass
@@ -308,25 +310,25 @@ def deploy_agent(client: Dedalus, machine_id: str = None):
 
     # Install system dependencies
     exec_cmd(client, machine_id, [
-        "/bin/bash", "-c",
+        BASH, "-c",
         "apt-get update -qq && apt-get install -y -qq git curl > /dev/null 2>&1"
     ], "Installing system packages")
 
     # Install Node.js (v20 LTS)
     exec_cmd(client, machine_id, [
-        "/bin/bash", "-c",
+        BASH, "-c",
         "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y -qq nodejs > /dev/null 2>&1"
     ], "Installing Node.js 20 LTS")
 
     # Clone or update repo
     exec_cmd(client, machine_id, [
-        "/bin/bash", "-c",
+        BASH, "-c",
         f"if [ -d {APP_DIR}/.git ]; then cd {APP_DIR} && git pull; else git clone {REPO_URL} {APP_DIR}; fi"
     ], f"Cloning/updating repo")
 
     # Install npm dependencies
     exec_cmd(client, machine_id, [
-        "/bin/bash", "-c",
+        BASH, "-c",
         f"cd {APP_DIR} && npm install --workspace=apps/agent"
     ], "Installing npm dependencies")
 
@@ -341,13 +343,13 @@ def deploy_agent(client: Dedalus, machine_id: str = None):
 
     # Kill any existing agent process
     exec_cmd(client, machine_id, [
-        "/bin/bash", "-c",
+        BASH, "-c",
         "pkill -f 'tsx src/index.ts' 2>/dev/null || true"
     ], "Stopping previous agent process (if any)")
 
     # Start agent (setsid for reliable detach through exec API)
     exec_cmd(client, machine_id, [
-        "/bin/bash", "-c",
+        BASH, "-c",
         f"echo '#!/bin/bash' > {AGENT_DIR}/start.sh && "
         f"echo 'cd {AGENT_DIR}' >> {AGENT_DIR}/start.sh && "
         f"echo 'exec npx tsx src/index.ts > /tmp/agent.log 2>&1' >> {AGENT_DIR}/start.sh && "
@@ -362,12 +364,12 @@ def deploy_agent(client: Dedalus, machine_id: str = None):
 
     # Save machine ID
     try:
-        with open(".dedalus_machines.json", "r") as f:
+        with open(MACHINE_STATE_FILE, "r") as f:
             existing = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         existing = {}
     existing["agent"] = machine_id
-    with open(".dedalus_machines.json", "w") as f:
+    with open(MACHINE_STATE_FILE, "w") as f:
         json.dump(existing, f, indent=2)
 
     return machine_id
@@ -378,7 +380,7 @@ def deploy_agent(client: Dedalus, machine_id: str = None):
 def get_saved_machines() -> dict:
     """Read machine IDs from local state file."""
     try:
-        with open(".dedalus_machines.json", "r") as f:
+        with open(MACHINE_STATE_FILE, "r") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
@@ -435,12 +437,43 @@ def tail_logs(client: Dedalus, machine_id: str = None, service: str = "backend")
 
     log_file = "/tmp/backend.log" if service == "backend" else "/tmp/agent.log"
     output = exec_cmd(client, machine_id, [
-        "/bin/bash", "-c", f"tail -100 {log_file}"
+        BASH, "-c", f"tail -100 {log_file}"
     ], f"Tailing {log_file}")
     print(output)
 
 
 # ── Main ──────────────────────────────────────────────────────────────
+
+def _print_banner():
+    _print_banner()
+
+
+def _run_lifecycle_action(client: Dedalus, args: argparse.Namespace) -> bool:
+    if args.status:
+        status_all(client)
+        return True
+    if args.sleep:
+        sleep_all(client)
+        return True
+    if args.wake:
+        wake_all(client)
+        return True
+    if args.logs:
+        service = args.service if args.service != "all" else "backend"
+        tail_logs(client, machine_id=args.machine, service=service)
+        return True
+    return False
+
+
+def _deploy_services(client: Dedalus, args: argparse.Namespace):
+    if args.service in ("backend", "all"):
+        backend_mid = args.machine if args.service == "backend" else None
+        deploy_backend(client, machine_id=backend_mid)
+
+    if args.service in ("agent", "all"):
+        agent_mid = args.machine if args.service == "agent" else None
+        deploy_agent(client, machine_id=agent_mid)
+
 
 def main():
     parser = argparse.ArgumentParser(description="Deploy Island of Habits to Dedalus Labs")
@@ -460,23 +493,8 @@ def main():
 
     client = get_client()
 
-    if args.status:
-        status_all(client)
-    elif args.sleep:
-        sleep_all(client)
-    elif args.wake:
-        wake_all(client)
-    elif args.logs:
-        tail_logs(client, machine_id=args.machine, service=args.service if args.service != "all" else "backend")
-    else:
-        # Deploy
-        if args.service in ("backend", "all"):
-            backend_mid = args.machine if args.service == "backend" else None
-            deploy_backend(client, machine_id=backend_mid)
-
-        if args.service in ("agent", "all"):
-            agent_mid = args.machine if args.service == "agent" else None
-            deploy_agent(client, machine_id=agent_mid)
+    if not _run_lifecycle_action(client, args):
+        _deploy_services(client, args)
 
     print("\n🏁  Done!")
 

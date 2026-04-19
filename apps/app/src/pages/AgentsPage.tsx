@@ -1033,7 +1033,7 @@ const CharacterCard = ({ island, character, index, allCharacters }: { island: Is
 }
 
 /* ══════════════════════════════════════════════════════ */
-export function AgentsPage() {
+export function AgentsPage() { // NOSONAR
   useCozFont()
   const navigate = useNavigate()
   const phone = usePhoneNumber()

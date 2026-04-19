@@ -55,37 +55,53 @@ def call_k2(messages: list[dict], stream: bool = False) -> str:
     print("    ─" * 30)
 
     resp = requests.post(K2_API_URL, headers=headers, json=payload, timeout=120)
-
-    if not resp.ok:
-        print(f"❌  HTTP {resp.status_code}: {resp.text}")
-        sys.exit(1)
-
+    _ensure_ok_response(resp)
     if stream:
-        # Handle SSE stream
-        full_text = ""
-        print("\n🔄  Streaming response:\n")
-        for line in resp.iter_lines(decode_unicode=True):
-            if not line or not line.startswith("data: "):
-                continue
-            data = line[len("data: "):]
-            if data.strip() == "[DONE]":
+        return _read_streaming_response(resp)
+    return _read_non_streaming_response(resp)
+
+
+def _ensure_ok_response(resp):
+    if resp.ok:
+        return
+    print(f"❌  HTTP {resp.status_code}: {resp.text}")
+    sys.exit(1)
+
+
+def _read_streaming_response(resp) -> str:
+    full_text = ""
+    print("\n🔄  Streaming response:\n")
+    for line in resp.iter_lines(decode_unicode=True):
+        content = _extract_stream_delta(line)
+        if content is None:
+            if line and line.startswith("data: ") and line[len("data: "):].strip() == "[DONE]":
                 break
-            try:
-                chunk = json.loads(data)
-                delta = chunk["choices"][0].get("delta", {})
-                content = delta.get("content", "")
-                if content:
-                    print(content, end="", flush=True)
-                    full_text += content
-            except (json.JSONDecodeError, KeyError, IndexError):
-                pass
-        print("\n")
-        return full_text
-    else:
-        data = resp.json()
-        content = data["choices"][0]["message"]["content"]
-        print(f"\n✅  Response:\n{content}\n")
-        return content
+            continue
+        print(content, end="", flush=True)
+        full_text += content
+    print("\n")
+    return full_text
+
+
+def _extract_stream_delta(line: str | None) -> str | None:
+    if not line or not line.startswith("data: "):
+        return None
+    data = line[len("data: "):]
+    if data.strip() == "[DONE]":
+        return None
+    try:
+        chunk = json.loads(data)
+        delta = chunk["choices"][0].get("delta", {})
+        return delta.get("content", "") or None
+    except (json.JSONDecodeError, KeyError, IndexError):
+        return None
+
+
+def _read_non_streaming_response(resp) -> str:
+    data = resp.json()
+    content = data["choices"][0]["message"]["content"]
+    print(f"\n✅  Response:\n{content}\n")
+    return content
 
 
 # ── Test scenarios ────────────────────────────────────────────────────

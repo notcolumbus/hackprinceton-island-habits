@@ -2,13 +2,14 @@ import os
 import requests
 
 AGENT_URL = os.environ.get("AGENT_URL", "http://localhost:3001")
+JSON_CONTENT_TYPE = "application/json"
 
 
 def send_message(phone: str, message: str) -> None:
     try:
         resp = requests.post(
             f"{AGENT_URL}/send",
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": JSON_CONTENT_TYPE},
             json={"to": phone, "message": message},
             timeout=30,
         )
@@ -26,7 +27,7 @@ def send_group_message(phones: list[str], message: str) -> None:
     try:
         resp = requests.post(
             f"{AGENT_URL}/send-group",
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": JSON_CONTENT_TYPE},
             json={"participants": phones, "message": message},
             timeout=30,
         )
@@ -51,7 +52,7 @@ def send_island_message(island_id: str, message: str) -> None:
     try:
         resp = requests.post(
             f"{AGENT_URL}/send-island",
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": JSON_CONTENT_TYPE},
             json={"islandId": island_id, "message": message},
             timeout=30,
         )

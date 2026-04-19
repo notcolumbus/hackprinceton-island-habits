@@ -39,6 +39,71 @@ def _friendly_name(member: dict) -> str:
     return f"Player {digits[-4:]}" if len(digits) >= 4 else (phone or "teammate")
 
 
+def _build_island_recap(db, island_id: str, yesterday: str) -> str:
+    stats = db.query(
+        "jobQueries:getYesterdayIslandStats",
+        {"islandId": island_id, "date": yesterday},
+    ) or {"completed": [], "missed": []}
+    completed_names = _format_name_list(stats.get("completed", []), "completed")
+    missed_names = _format_name_list(stats.get("missed", []), "missed")
+    parts: list[str] = []
+    if completed_names:
+        parts.append(f"Yesterday {completed_names} hit their goals.")
+    if missed_names:
+        parts.append(f"{missed_names} missed theirs.")
+    return " ".join(parts) if parts else "Yesterday was quiet on the island."
+
+
+def _build_roster(island_members: list[dict]) -> list[dict]:
+    return [
+        {
+            "name": _friendly_name(member),
+            "goals": [g["text"] for g in (member.get("goals") or [])],
+        }
+        for member in island_members
+    ]
+
+
+def _log_group_message(db, island_members: list[dict], message: str, reasoning: str | None, today: str, team_recap: str, member_count: int):
+    agent = next((m.get("agent") for m in island_members if m.get("agent")), None)
+    if not agent:
+        return
+
+    context = {
+        "date": today,
+        "teamRecap": team_recap,
+        "memberCount": member_count,
+    }
+    if reasoning:
+        context["reasoning"] = reasoning
+    db.mutation("jobMutations:logAiMessage", {
+        "agentId": agent["_id"],
+        "channel": "imessage_group",
+        "content": message,
+        "context": context,
+    })
+
+
+def _send_island_morning_message(db, island_id: str, island_members: list[dict], today: str, yesterday: str):
+    team_recap = _build_island_recap(db, island_id, yesterday)
+    roster = _build_roster(island_members)
+
+    print(f"[morning-reminder] K2 call for island {island_id} (members={len(roster)})")
+    message, reasoning = generate_group_morning_reminder(roster, team_recap)
+    print(f"[morning-reminder] K2 → {message[:100]}")
+
+    send_island_message(island_id, message)
+    _log_group_message(
+        db=db,
+        island_members=island_members,
+        message=message,
+        reasoning=reasoning,
+        today=today,
+        team_recap=team_recap,
+        member_count=len(roster),
+    )
+
+
 @jobs_bp.post("/morning-reminder")
 def morning_reminder():
     """Send one K2-generated group iMessage per island.
@@ -65,53 +130,7 @@ def morning_reminder():
 
     for island_id, island_members in by_island.items():
         try:
-            # Yesterday's team stats — used to ground the K2 narrative.
-            stats = db.query(
-                "jobQueries:getYesterdayIslandStats",
-                {"islandId": island_id, "date": yesterday},
-            ) or {"completed": [], "missed": []}
-            completed_names = _format_name_list(stats.get("completed", []), "completed")
-            missed_names = _format_name_list(stats.get("missed", []), "missed")
-            parts = []
-            if completed_names:
-                parts.append(f"Yesterday {completed_names} hit their goals.")
-            if missed_names:
-                parts.append(f"{missed_names} missed theirs.")
-            team_recap = " ".join(parts) if parts else "Yesterday was quiet on the island."
-
-            # Build the team list for K2.
-            roster = []
-            for m in island_members:
-                roster.append({
-                    "name": _friendly_name(m),
-                    "goals": [g["text"] for g in (m.get("goals") or [])],
-                })
-
-            print(f"[morning-reminder] K2 call for island {island_id} (members={len(roster)})")
-            message, reasoning = generate_group_morning_reminder(roster, team_recap)
-            print(f"[morning-reminder] K2 → {message[:100]}")
-
-            send_island_message(island_id, message)
-
-            # Log once per island against any agent on that island (for history).
-            agent = next(
-                (m.get("agent") for m in island_members if m.get("agent")),
-                None,
-            )
-            if agent:
-                context = {
-                    "date": today,
-                    "teamRecap": team_recap,
-                    "memberCount": len(roster),
-                }
-                if reasoning:
-                    context["reasoning"] = reasoning
-                db.mutation("jobMutations:logAiMessage", {
-                    "agentId": agent["_id"],
-                    "channel": "imessage_group",
-                    "content": message,
-                    "context": context,
-                })
+            _send_island_morning_message(db, island_id, island_members, today, yesterday)
             sent += 1
         except Exception as exc:
             failed += 1

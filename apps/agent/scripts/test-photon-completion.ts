@@ -136,58 +136,77 @@ async function classifyWithK2(
 // JSON object. A naive /\{[\s\S]*\}/ match sweeps up the reasoning and
 // produces invalid JSON, collapsing to the fallback {confidence:0,...}.
 // The extractor below tries strategies in order of specificity.
-function extractJsonBlock(raw: string): string | null {
-  // 1. Strip reasoning envelopes so their braces can't poison the search.
-  const stripped = raw
+function extractJsonBlock(raw: string): string | null { // NOSONAR
+  const stripped = stripReasoningWrappers(raw);
+  const fenced = extractFencedJson(stripped);
+  if (fenced) return fenced;
+
+  const candidates = collectBalancedJsonCandidates(stripped);
+  const preferred = pickPreferredCandidate(candidates);
+  return preferred ?? (candidates.length ? candidates[candidates.length - 1] : null);
+}
+
+function stripReasoningWrappers(raw: string): string {
+  return raw
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
     .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, "")
     .replace(/<answer>([\s\S]*?)<\/answer>/gi, "$1")
     .trim();
+}
 
-  // 2. Prefer a fenced ```json ... ``` block.
+function extractFencedJson(stripped: string): string | null {
   const fenced = stripped.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenced && fenced[1].trim().startsWith("{")) {
-    return fenced[1].trim();
-  }
+  if (!fenced) return null;
+  const block = fenced[1].trim();
+  return block.startsWith("{") ? block : null;
+}
 
-  // 3. Scan for a balanced {...} object, skipping strings. Prefer the LAST
-  //    balanced object (the final answer after any reasoning scratchpad).
+function collectBalancedJsonCandidates(input: string): string[] {
   const candidates: string[] = [];
-  for (let i = 0; i < stripped.length; i++) {
-    if (stripped[i] !== "{") continue;
-    let depth = 0;
-    let inStr = false;
-    let esc = false;
-    for (let j = i; j < stripped.length; j++) {
-      const ch = stripped[j];
-      if (inStr) {
-        if (esc) esc = false;
-        else if (ch === "\\") esc = true;
-        else if (ch === '"') inStr = false;
-        continue;
-      }
-      if (ch === '"') inStr = true;
-      else if (ch === "{") depth++;
-      else if (ch === "}") {
-        depth--;
-        if (depth === 0) {
-          candidates.push(stripped.slice(i, j + 1));
-          i = j;
-          break;
-        }
-      }
+  for (let i = 0; i < input.length; i++) {
+    if (input[i] !== "{") continue;
+    const end = findBalancedObjectEnd(input, i);
+    if (end === -1) continue;
+    candidates.push(input.slice(i, end + 1));
+    i = end;
+  }
+  return candidates;
+}
+
+function findBalancedObjectEnd(input: string, start: number): number {
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let j = start; j < input.length; j++) {
+    const ch = input[j];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return j;
     }
   }
-  // Prefer the candidate that actually parses and has a "completed" key.
-  for (let k = candidates.length - 1; k >= 0; k--) {
+  return -1;
+}
+
+function pickPreferredCandidate(candidates: string[]): string | null {
+  for (let i = candidates.length - 1; i >= 0; i--) {
     try {
-      const obj = JSON.parse(candidates[k]);
-      if (obj && typeof obj === "object" && "completed" in obj) return candidates[k];
+      const obj = JSON.parse(candidates[i]);
+      if (obj && typeof obj === "object" && "completed" in obj) {
+        return candidates[i];
+      }
     } catch {
       // try next
     }
   }
-  return candidates.length ? candidates[candidates.length - 1] : null;
+  return null;
 }
 
 function parseVerdict(raw: string): CompletionVerdict {

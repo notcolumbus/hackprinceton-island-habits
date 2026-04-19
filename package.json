@@ -14,7 +14,6 @@
     "test": "turbo run test"
   },
   "devDependencies": {
-    "@esbuild/darwin-arm64": "^0.28.0",
     "turbo": "^2.0.0"
   },
   "dependencies": {

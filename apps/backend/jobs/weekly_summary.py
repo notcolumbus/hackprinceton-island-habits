@@ -6,6 +6,83 @@ from jobs.k2 import generate_weekly_summary
 from jobs.photon import send_island_message
 
 
+def _name_from_phone(phone: str) -> str:
+    if "@" in phone:
+        return phone.split("@", 1)[0]
+    digits = "".join(c for c in phone if c.isdigit())
+    return f"Player {digits[-4:]}" if len(digits) >= 4 else phone
+
+
+def _build_name_lookup(details: dict) -> dict:
+    members = details.get("members") or []
+    name_by_phone: dict = {}
+    for member in members:
+        phone = member.get("phoneNumber")
+        if not phone:
+            continue
+        raw = (member.get("displayName") or "").strip()
+        name_by_phone[phone] = raw.split(" ")[0] if raw else _name_from_phone(phone)
+    return name_by_phone
+
+
+def _build_per_user_breakdown(stats: dict, name_by_phone: dict) -> list[dict]:
+    all_phones = set(stats["user_checkins"].keys()) | set(stats["user_misses"].keys())
+    rows = [
+        {
+            "name": name_by_phone.get(phone, phone),
+            "completed": stats["user_checkins"].get(phone, 0),
+            "missed": stats["user_misses"].get(phone, 0),
+        }
+        for phone in all_phones
+    ]
+    rows.sort(key=lambda r: r["completed"], reverse=True)
+    return rows
+
+
+def _summarize_island(db, island: dict, events: list):
+    details = db.query(
+        "islands:getIslandDetails",
+        {"islandId": island["_id"]},
+    ) or {}
+    stats = _aggregate_stats(events, island)
+    name_by_phone = _build_name_lookup(details)
+    per_user = _build_per_user_breakdown(stats, name_by_phone)
+    top_completer_name = name_by_phone.get(stats["top_completer"]) or "nobody"
+    top_misser_name = name_by_phone.get(stats["top_misser"]) if stats["top_misser"] else None
+
+    print(
+        f"[weekly-summary] K2 call for island {island['_id']} "
+        f"(checkins={stats['total_checkins']}, misses={stats['total_misses']}, "
+        f"members={len(per_user)})"
+    )
+    narrative, reasoning = generate_weekly_summary(
+        stats["total_checkins"],
+        stats["total_misses"],
+        stats["builds_completed"],
+        top_completer_name,
+        per_user_breakdown=per_user,
+        completion_rate=stats["completion_rate"],
+        top_misser=top_misser_name,
+    )
+    print(f"[weekly-summary] K2 → {narrative[:120]}")
+    return details, stats, narrative, reasoning
+
+
+def _record_weekly_summary(db, island: dict, details: dict, stats: dict, narrative: str, reasoning: str | None):
+    log_stats = {**stats}
+    if reasoning:
+        log_stats["reasoning"] = reasoning
+
+    agents = details.get("agents") or []
+    island_agent = agents[0] if agents else None
+    db.mutation("jobMutations:recordWeeklySummary", {
+        "islandId": island["_id"],
+        "agentId": island_agent["_id"] if island_agent else None,
+        "content": narrative,
+        "stats": log_stats,
+    })
+
+
 @jobs_bp.post("/weekly-summary")
 def weekly_summary():
     """Run the weekly recap for every island that just crossed a 7-day boundary.
@@ -32,73 +109,10 @@ def weekly_summary():
                 print(f"[weekly-summary] island {island['_id']} has no phones — skip")
                 continue
 
-            # Pull members with displayNames so K2 can name-check real people
-            # instead of phone numbers.
-            details = db.query(
-                "islands:getIslandDetails",
-                {"islandId": island["_id"]},
-            ) or {}
-            members = details.get("members") or []
-            name_by_phone: dict = {}
-            for m in members:
-                phone = m.get("phoneNumber")
-                if not phone:
-                    continue
-                raw = (m.get("displayName") or "").strip()
-                if raw:
-                    name_by_phone[phone] = raw.split(" ")[0]
-                elif "@" in phone:
-                    name_by_phone[phone] = phone.split("@", 1)[0]
-                else:
-                    digits = "".join(c for c in phone if c.isdigit())
-                    name_by_phone[phone] = f"Player {digits[-4:]}" if len(digits) >= 4 else phone
-
-            stats = _aggregate_stats(events, island)
-
-            # Build per-user breakdown that K2 can reference by name.
-            per_user = []
-            all_phones = set(stats["user_checkins"].keys()) | set(stats["user_misses"].keys())
-            for phone in all_phones:
-                per_user.append({
-                    "name": name_by_phone.get(phone, phone),
-                    "completed": stats["user_checkins"].get(phone, 0),
-                    "missed": stats["user_misses"].get(phone, 0),
-                })
-            per_user.sort(key=lambda r: r["completed"], reverse=True)
-
-            top_completer_name = name_by_phone.get(stats["top_completer"]) or "nobody"
-            top_misser_name = name_by_phone.get(stats["top_misser"]) if stats["top_misser"] else None
-
-            print(
-                f"[weekly-summary] K2 call for island {island['_id']} "
-                f"(checkins={stats['total_checkins']}, misses={stats['total_misses']}, "
-                f"members={len(per_user)})"
-            )
-            narrative, reasoning = generate_weekly_summary(
-                stats["total_checkins"],
-                stats["total_misses"],
-                stats["builds_completed"],
-                top_completer_name,
-                per_user_breakdown=per_user,
-                completion_rate=stats["completion_rate"],
-                top_misser=top_misser_name,
-            )
-            print(f"[weekly-summary] K2 → {narrative[:120]}")
-
-            log_stats = {**stats}
-            if reasoning:
-                log_stats["reasoning"] = reasoning
+            details, stats, narrative, reasoning = _summarize_island(db, island, events)
 
             send_island_message(island["_id"], narrative)
-
-            agents = details.get("agents") or []
-            island_agent = agents[0] if agents else None
-            db.mutation("jobMutations:recordWeeklySummary", {
-                "islandId": island["_id"],
-                "agentId": island_agent["_id"] if island_agent else None,
-                "content": narrative,
-                "stats": log_stats,
-            })
+            _record_weekly_summary(db, island, details, stats, narrative, reasoning)
 
             sent += 1
         except Exception as exc:

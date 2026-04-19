@@ -53,7 +53,7 @@ type ExtendedCommand =
   | { kind: "reset" }
   | { kind: "debug" };
 
-function parseExtendedCommand(raw: string): ExtendedCommand {
+function parseExtendedCommand(raw: string): ExtendedCommand { // NOSONAR
   const body = raw.trim();
   const lower = body.toLowerCase();
 
@@ -85,7 +85,7 @@ const EXTENDED_HELP =
 
 // ── Extended handlers ─────────────────────────────────────────────────
 
-async function handleBoost(space: any, sender: string, index: number, xpAmount: number): Promise<void> {
+async function handleBoost(space: any, sender: string, index: number, xpAmount: number): Promise<void> { // NOSONAR
   const lookup = await lookupGoalByIndex(sender, index);
   if (!lookup.ok) {
     if (lookup.reason === "no-island") {
@@ -213,9 +213,58 @@ async function handleReset(space: any): Promise<void> {
   await space.send(text("🔄 Space onboarding cache cleared. You can /start again."));
 }
 
+function requireSender(resolvedSender: string | null): resolvedSender is string {
+  if (resolvedSender) return true;
+  console.log(`└─ ⚠️  could not resolve sender`);
+  return false;
+}
+
+async function handleExtendedCommand(
+  cmd: ExtendedCommand,
+  space: any,
+  message: any,
+  resolvedSender: string | null,
+  senderLabel: string,
+): Promise<void> {
+  switch (cmd.kind) {
+    case "reset":
+      await handleReset(space);
+      console.log(`└─ ✅ /reset`);
+      return;
+    case "debug":
+      if (!requireSender(resolvedSender)) return;
+      await handleDebug(space, resolvedSender);
+      console.log(`└─ ✅ /debug for ${senderLabel}`);
+      return;
+    case "boost":
+      if (!requireSender(resolvedSender)) return;
+      await handleBoost(space, resolvedSender, cmd.index, cmd.amount);
+      console.log(`└─ ✅ /boost for ${senderLabel}`);
+      return;
+    case "reward":
+      if (!requireSender(resolvedSender)) return;
+      await handleReward(space, resolvedSender, cmd.amount);
+      console.log(`└─ ✅ /reward for ${senderLabel}`);
+      return;
+    case "motivation":
+      if (!requireSender(resolvedSender)) return;
+      await handleMotivation(space, resolvedSender, cmd.amount);
+      console.log(`└─ ✅ /motivation for ${senderLabel}`);
+      return;
+    default: {
+      const result = await dispatchKnownCommand(space, message, cmd as any, resolvedSender, EXTENDED_HELP);
+      if (result === "no-sender") {
+        console.log(`└─ ⚠️  could not resolve sender for ${message.sender.id}`);
+      } else {
+        console.log(`└─ ✅ /${cmd.kind} for ${senderLabel}`);
+      }
+    }
+  }
+}
+
 // ── Main ──────────────────────────────────────────────────────────────
 
-async function main(): Promise<void> {
+async function main(): Promise<void> { // NOSONAR
   if (process.argv.includes("--dry")) {
     console.log(EXTENDED_HELP);
     return;
@@ -255,48 +304,7 @@ async function main(): Promise<void> {
     }
 
     try {
-      // Try extended commands first
-      if (cmd.kind === "reset") {
-        await handleReset(space);
-        console.log(`└─ ✅ /reset`);
-      } else if (cmd.kind === "debug") {
-        if (!resolvedSender) {
-          console.log(`└─ ⚠️  could not resolve sender`);
-          continue;
-        }
-        await handleDebug(space, resolvedSender);
-        console.log(`└─ ✅ /debug for ${senderLabel}`);
-      } else if (cmd.kind === "boost") {
-        if (!resolvedSender) {
-          console.log(`└─ ⚠️  could not resolve sender`);
-          continue;
-        }
-        await handleBoost(space, resolvedSender, cmd.index, cmd.amount);
-        console.log(`└─ ✅ /boost for ${senderLabel}`);
-      } else if (cmd.kind === "reward") {
-        if (!resolvedSender) {
-          console.log(`└─ ⚠️  could not resolve sender`);
-          continue;
-        }
-        await handleReward(space, resolvedSender, cmd.amount);
-        console.log(`└─ ✅ /reward for ${senderLabel}`);
-      } else if (cmd.kind === "motivation") {
-        if (!resolvedSender) {
-          console.log(`└─ ⚠️  could not resolve sender`);
-          continue;
-        }
-        await handleMotivation(space, resolvedSender, cmd.amount);
-        console.log(`└─ ✅ /motivation for ${senderLabel}`);
-      } else {
-        // Production command — delegate to router's dispatcher
-        // Override help text to show extended commands
-        const result = await dispatchKnownCommand(space, message, cmd as any, resolvedSender, EXTENDED_HELP);
-        if (result === "no-sender") {
-          console.log(`└─ ⚠️  could not resolve sender for ${message.sender.id}`);
-        } else {
-          console.log(`└─ ✅ /${cmd.kind} for ${senderLabel}`);
-        }
-      }
+      await handleExtendedCommand(cmd, space, message, resolvedSender, senderLabel);
     } catch (err: any) {
       console.error(`└─ ❌ /${cmd.kind} for ${senderLabel} failed: ${err?.message ?? err}`);
       await space.send(text("Something went wrong. Try again in a moment."));

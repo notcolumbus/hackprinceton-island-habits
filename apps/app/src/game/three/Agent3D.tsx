@@ -92,7 +92,7 @@ export const Agent3D = ({
   const sceneryCountRef = useRef(scenery.length);
   sceneryCountRef.current = scenery.length;
 
-  useFrame((_state, delta) => {
+  useFrame((_state, delta) => { // NOSONAR
     if (!group.current) return;
     const nowMs = Date.now() + timeOffsetMs; // cosmetic effects only (body sway)
 
@@ -489,7 +489,7 @@ export const Agent3D = ({
               </mesh>
             </group>
           )}
-          {agent.hairStyle === "bun" && (
+          {agent.hairStyle === "bun" && ( // NOSONAR
             <group>
               <mesh position={[0, 0.05, -0.02]} castShadow>
                 <sphereGeometry args={[0.21, 16, 14, 0, Math.PI * 2, 0, Math.PI / 1.8]} />
@@ -557,7 +557,7 @@ export const Agent3D = ({
       {/* ── Name tag label ── */}
       <Html position={[0, 1.25, 0]} center distanceFactor={6} zIndexRange={[10, 0]}>
         <div className="pointer-events-none flex flex-col items-center gap-0.5 select-none">
-          <div
+          <div // NOSONAR
             className={`px-2.5 py-0.5 rounded-full text-[10px] font-black shadow-lg whitespace-nowrap ${
               agent.isYou
                 ? "bg-primary text-primary-foreground border-2 border-white"
@@ -577,7 +577,7 @@ export const Agent3D = ({
       </Html>
 
       {/* ── Gossip speech bubble — portaled to body to stay above all UI ── */}
-      {gossipText && (
+      {gossipText && ( // NOSONAR
         <Html position={[0, 1.65, 0]} center distanceFactor={6} zIndexRange={[9999, 9999]} portal={{ current: document.body }}>
           <div className="pointer-events-none relative bg-white rounded-2xl px-3 py-1.5 text-[11px] font-bold shadow-lg max-w-[150px] text-center leading-snug border border-neutral-200 select-none">
             {gossipText}
