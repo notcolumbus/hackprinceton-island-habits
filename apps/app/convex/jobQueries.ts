@@ -50,6 +50,72 @@ export const getActiveMembersWithGoals = query({
   },
 });
 
+// Like getActiveMembersWithGoals, but includes members even when they have
+// no agent record yet or no active goals. Morning reminder uses this so
+// teammates who joined via the web (never /add'd a goal) still get a nudge.
+// When agent is missing → null; when goals is empty → []. The job handler
+// picks a generic message in those cases.
+export const getAllMembersForReminder = query({
+  args: {},
+  handler: async (ctx) => {
+    const members = await ctx.db.query("islandMembers").collect();
+    const results: {
+      phoneNumber: string;
+      displayName: string | null;
+      agent: Doc<"agents"> | null;
+      goals: Doc<"goals">[];
+      island: Doc<"islands">;
+    }[] = [];
+    const islandCache = new Map<Id<"islands">, Doc<"islands"> | null>();
+
+    for (const member of members) {
+      let island = islandCache.get(member.islandId);
+      if (island === undefined) {
+        island = await ctx.db.get(member.islandId);
+        islandCache.set(member.islandId, island);
+      }
+      if (!island) continue;
+
+      const agents = await ctx.db
+        .query("agents")
+        .withIndex("by_island_phone", (q) =>
+          q.eq("islandId", member.islandId).eq("phoneNumber", member.phoneNumber)
+        )
+        .collect();
+      const canonicalAgent = [...agents].sort((a, b) => a.createdAt - b.createdAt)[0] ?? null;
+
+      const goals = await ctx.db
+        .query("goals")
+        .withIndex("by_island_phone", (q) =>
+          q.eq("islandId", member.islandId).eq("phoneNumber", member.phoneNumber)
+        )
+        .filter((q) => q.eq(q.field("status"), "active"))
+        .collect();
+
+      // Look up a friendly name so the group message reads like a chat.
+      const isEmail = member.phoneNumber.includes("@");
+      const userRow = isEmail
+        ? await ctx.db
+            .query("users")
+            .withIndex("by_email", (q) => q.eq("email", member.phoneNumber.toLowerCase()))
+            .first()
+        : await ctx.db
+            .query("users")
+            .withIndex("by_phone", (q) => q.eq("phoneNumber", member.phoneNumber))
+            .first();
+
+      results.push({
+        phoneNumber: member.phoneNumber,
+        displayName: userRow?.displayName ?? null,
+        agent: canonicalAgent,
+        goals,
+        island,
+      });
+    }
+    return results;
+  },
+});
+
 // Returns true if a personal reminder was already sent to this agent today
 export const reminderSentToday = query({
   args: { agentId: v.id("agents"), today: v.string() },

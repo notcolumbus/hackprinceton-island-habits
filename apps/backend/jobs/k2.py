@@ -87,19 +87,73 @@ def generate_morning_reminder(
     return call_k2(_load("prompt_morning_reminder.md"), user, max_tokens=140)
 
 
+def generate_group_morning_reminder(
+    members: list,
+    team_recap: str = "",
+) -> Tuple[str, Optional[str]]:
+    """Generate one morning iMessage addressed to the whole island group.
+
+    `members` is a list of `{"name": str, "goals": list[str]}`. K2 writes a
+    short group-chat-style message that greets the team, pokes at yesterday's
+    recap, and nudges each person (or the team collectively) toward today's
+    goals. Reuses the morning-reminder prompt but with a team-scoped payload.
+    """
+    if not members:
+        members = [{"name": "team", "goals": ["stay consistent today"]}]
+    lines = []
+    for m in members:
+        name = m.get("name") or "teammate"
+        goals = m.get("goals") or []
+        if goals:
+            lines.append(f"- {name}: {', '.join(goals)}")
+        else:
+            lines.append(f"- {name}: (no goals yet)")
+    recap_note = f"Yesterday on the island: {team_recap}" if team_recap else ""
+    user = (
+        "Audience: one iMessage group chat with every islander reading.\n"
+        "Address the team collectively; name-check people whose progress "
+        "(or miss) makes it interesting. Don't list every goal verbatim.\n"
+        "Members and today's goals:\n"
+        f"{chr(10).join(lines)}\n"
+        f"{recap_note}"
+    ).strip()
+    return call_k2(_load("prompt_morning_reminder.md"), user, max_tokens=220)
+
+
 def generate_weekly_summary(
     total_completed: int,
     total_missed: int,
     buildings_constructed: int,
     top_performer: str,
-) -> str:
-    user = (
-        f"Total completed: {total_completed}\n"
-        f"Total missed: {total_missed}\n"
-        f"Buildings constructed: {buildings_constructed}\n"
-        f"Top performer: {top_performer}"
-    )
-    return call_k2(_load("prompt_weekly_summary.md"), user, max_tokens=250)
+    per_user_breakdown: Optional[list] = None,
+    completion_rate: Optional[float] = None,
+    top_misser: Optional[str] = None,
+) -> Tuple[str, Optional[str]]:
+    """Build a team-style weekly recap prompt.
+
+    `per_user_breakdown` is a list of `{"name", "completed", "missed"}` so
+    K2 can name-check individuals instead of referring to phone numbers.
+    Falls back to the old summary shape when breakdown isn't supplied.
+    """
+    lines = [
+        f"Total completed: {total_completed}",
+        f"Total missed: {total_missed}",
+        f"Buildings constructed: {buildings_constructed}",
+        f"Top performer: {top_performer}",
+    ]
+    if completion_rate is not None:
+        lines.append(f"Completion rate: {round(completion_rate * 100)}%")
+    if top_misser:
+        lines.append(f"Most missed: {top_misser}")
+    if per_user_breakdown:
+        lines.append("Per-user breakdown:")
+        for row in per_user_breakdown:
+            name = row.get("name") or "teammate"
+            done = row.get("completed", 0)
+            missed = row.get("missed", 0)
+            lines.append(f"- {name}: {done} check-ins, {missed} misses")
+    user = "\n".join(lines)
+    return call_k2(_load("prompt_weekly_summary.md"), user, max_tokens=260)
 
 
 def generate_low_motivation_message(personality: dict, motivation: int) -> Tuple[str, Optional[str]]:

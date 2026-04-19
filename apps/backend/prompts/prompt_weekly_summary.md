@@ -23,7 +23,19 @@ Total completed: {total_completed}
 Total missed: {total_missed}
 Buildings constructed: {buildings_constructed}
 Top performer: {top_performer}
+Completion rate: {completion_rate}%          (may be present)
+Most missed: {top_misser}                    (may be present)
+Per-user breakdown:                          (may be present)
+- {name}: {completed} check-ins, {missed} misses
+- ...
 ```
+
+## Use of the breakdown
+
+When `Per-user breakdown` is supplied, you MAY name a second person
+besides the top performer — e.g. highlight someone who had a tough week,
+or a quiet overachiever. Keep it to at most two named callouts total
+(including the top performer). Don't list every member's numbers.
 
 ## Output
 

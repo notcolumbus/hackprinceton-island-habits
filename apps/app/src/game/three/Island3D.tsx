@@ -550,7 +550,6 @@ const Scene = ({
     placingType,
     islandEra,
     viewingEra,
-    islandHistory,
     timeOffsetMs,
     audioMuted,
     showToast,
@@ -613,61 +612,85 @@ const Scene = ({
   useEffect(() => stopSpeechPlayback, [stopSpeechPlayback]);
 
   const speakLine = useCallback(
-    async (text: string, speaker: "a" | "b") => {
-      if (audioMuted || !text.trim()) return;
-      if (preferBrowserTtsRef.current) {
-        speakWithBrowserTts(text, speaker);
-        return;
+    (text: string, speaker: "a" | "b"): Promise<void> => {
+      if (audioMuted || !text.trim()) {
+        return new Promise((r) => setTimeout(r, SEC_PER_LINE));
       }
-      stopSpeechPlayback();
 
-      const controller = new AbortController();
-      ttsAbortRef.current = controller;
-      try {
-        const response = await fetch(`${BACKEND_URL}${TTS_ENDPOINT}`, {
+      if (preferBrowserTtsRef.current) {
+        return new Promise<void>((resolve) => {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.rate = 1.02;
+          utterance.pitch = speaker === "a" ? 1.1 : 0.95;
+          const voices = window.speechSynthesis.getVoices();
+          if (voices.length > 0) {
+            utterance.voice = voices[speaker === "a" ? 0 : Math.min(1, voices.length - 1)];
+          }
+          utterance.onend = () => resolve();
+          utterance.onerror = () => resolve();
+          window.speechSynthesis.speak(utterance);
+          setTimeout(resolve, 10_000); // safety cap
+        });
+      }
+
+      stopSpeechPlayback();
+      return new Promise<void>((resolve) => {
+        const controller = new AbortController();
+        ttsAbortRef.current = controller;
+
+        fetch(`${BACKEND_URL}${TTS_ENDPOINT}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text, speaker }),
           signal: controller.signal,
-        });
-        if (!response.ok) {
-          preferBrowserTtsRef.current = true;
-          if (!ttsWarnedRef.current) {
-            showToast("ElevenLabs unavailable, using browser voice fallback.");
-            ttsWarnedRef.current = true;
-          }
-          speakWithBrowserTts(text, speaker);
-          return;
-        }
+        })
+          .then(async (response) => {
+            if (!response.ok) {
+              preferBrowserTtsRef.current = true;
+              if (!ttsWarnedRef.current) {
+                showToast("ElevenLabs unavailable, using browser voice fallback.");
+                ttsWarnedRef.current = true;
+              }
+              speakWithBrowserTts(text, speaker);
+              await new Promise((r) => setTimeout(r, SEC_PER_LINE));
+              resolve();
+              return;
+            }
 
-        const audioBlob = await response.blob();
-        if (controller.signal.aborted || audioMuted) return;
+            const audioBlob = await response.blob();
+            if (controller.signal.aborted || audioMuted) { resolve(); return; }
 
-        const audioUrl = URL.createObjectURL(audioBlob);
-        audioUrlRef.current = audioUrl;
-        const audio = new Audio(audioUrl);
-        audioRef.current = audio;
-        void audio.play().catch(() => {
-          // Browser autoplay/user-gesture restrictions can block MP3 playback.
-          speakWithBrowserTts(text, speaker);
-        });
+            const audioUrl = URL.createObjectURL(audioBlob);
+            audioUrlRef.current = audioUrl;
+            const audio = new Audio(audioUrl);
+            audioRef.current = audio;
 
-        audio.onended = () => {
-          if (audioUrlRef.current) {
-            URL.revokeObjectURL(audioUrlRef.current);
-            audioUrlRef.current = null;
-          }
-          if (audioRef.current === audio) {
-            audioRef.current = null;
-          }
-        };
-      } catch {
-        speakWithBrowserTts(text, speaker);
-      } finally {
-        if (ttsAbortRef.current === controller) {
-          ttsAbortRef.current = null;
-        }
-      }
+            audio.onended = () => {
+              if (audioUrlRef.current === audioUrl) {
+                URL.revokeObjectURL(audioUrl);
+                audioUrlRef.current = null;
+              }
+              if (audioRef.current === audio) audioRef.current = null;
+              resolve();
+            };
+            audio.onerror = () => { speakWithBrowserTts(text, speaker); resolve(); };
+
+            audio.play().catch(() => {
+              speakWithBrowserTts(text, speaker);
+              resolve();
+            });
+          })
+          .catch((err) => {
+            if ((err as { name?: string })?.name !== "AbortError") {
+              speakWithBrowserTts(text, speaker);
+            }
+            resolve();
+          })
+          .finally(() => {
+            if (ttsAbortRef.current === controller) ttsAbortRef.current = null;
+          });
+      });
     },
     [audioMuted, stopSpeechPlayback, speakWithBrowserTts, showToast],
   );
@@ -690,33 +713,32 @@ const Scene = ({
       }),
     })
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: { lines?: ConvLine[], _reasoning?: string } | null) => {
+      .then(async (data: { lines?: ConvLine[], _reasoning?: string } | null) => {
         const lines = data?.lines;
         const reasoning = data?._reasoning;
         if (!lines?.length) { setActiveConv(null); return; }
 
-        // Play lines sequentially
-        lines.forEach((line, i) => {
+        // Play each line only after the previous one finishes speaking
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
           const speakerId = line.speaker === 'a' ? agentA.id : agentB.id;
           const clearPrevId = i > 0 ? (lines[i - 1].speaker === 'a' ? agentA.id : agentB.id) : null;
-          setTimeout(() => {
-            setGossipBubbles((prev) => {
-              const next = new Map(prev);
-              if (clearPrevId) next.delete(clearPrevId);
-              next.set(speakerId, line.text);
-              return next;
-            });
-            void speakLine(line.text, line.speaker);
-          }, i * SEC_PER_LINE);
-        });
 
-        // End conversation
-        const totalMs = lines.length * SEC_PER_LINE;
-        setTimeout(() => {
-          setGossipBubbles(new Map());
-          setActiveConv(null);
-          saveConversation(agentA.id, agentB.id, lines, reasoning);
-        }, totalMs + 500);
+          setGossipBubbles((prev) => {
+            const next = new Map(prev);
+            if (clearPrevId) next.delete(clearPrevId);
+            next.set(speakerId, line.text);
+            return next;
+          });
+
+          await speakLine(line.text, line.speaker);
+          // Brief pause between lines
+          await new Promise((r) => setTimeout(r, 400));
+        }
+
+        setGossipBubbles(new Map());
+        setActiveConv(null);
+        saveConversation(agentA.id, agentB.id, lines, reasoning);
       })
       .catch(() => { setActiveConv(null); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -724,9 +746,9 @@ const Scene = ({
 
   const displayEra = viewingEra ?? islandEra;
   const tier = ISLAND_TIERS[displayEra];
-  const displayBuildings = viewingEra !== null
-    ? (islandHistory[viewingEra]?.buildings ?? [])
-    : buildings;
+  // `buildings` now holds every era (the Convex bridge stopped filtering so
+  // past islands stay visitable). Scope down to the era currently on screen.
+  const displayBuildings = buildings.filter((b) => (b.placedAtEra ?? 0) === displayEra);
 
   return (
     <>

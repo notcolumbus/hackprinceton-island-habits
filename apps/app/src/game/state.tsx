@@ -173,10 +173,18 @@ export interface ChatMsg { from: "agent" | "you"; text: string; ts: number; }
 // ── Decoration scenery (trees/rocks/flowers) — used for placement scoring ──
 export interface Scenery { id: string; type: "tree" | "rock" | "flower"; pos: [number, number]; district: DistrictId; variant: number; }
 
+export interface EraSnapshot {
+  era: number;
+  level: number;
+  currency: number;
+  graduatedAt: number;      // ms epoch
+}
+
 type ConvexSyncPatch = Partial<
   Pick<GameState, "level" | "xp" | "coins" | "logs" | "rocks" | "streak" | "dayCount" | "islandEra" | "agents" | "buildings" | "goals">
 > & {
   serverNowMs?: number;
+  eraSnapshots?: EraSnapshot[];
 };
 
 interface GameState {
@@ -445,6 +453,7 @@ export const GameProvider = ({
   // islandHistory is derived below so every client (not just the one who
   // clicked Fly) can open the visit UI for past eras.
   const [islandEra, setIslandEra] = useState(initialData?.islandEra ?? 0);
+  const [eraSnapshots, setEraSnapshots] = useState<EraSnapshot[]>([]);
   const [trackAgent, setTrackAgent] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isVisiting, setIsVisiting] = useState(false);
@@ -465,6 +474,7 @@ export const GameProvider = ({
     if (patch.streak !== undefined) setStreak(patch.streak);
     if (patch.dayCount !== undefined) setDayCount(patch.dayCount);
     if (patch.islandEra !== undefined) setIslandEra(patch.islandEra);
+    if (patch.eraSnapshots !== undefined) setEraSnapshots(patch.eraSnapshots);
     if (patch.serverNowMs !== undefined) {
       setTimeOffsetMs(patch.serverNowMs - Date.now());
     }
@@ -536,11 +546,25 @@ export const GameProvider = ({
   const placeBuildingAt = useCallback((pos: [number, number]): boolean => {
     if (!placingType) return false;
     const opt = BUILD_LIBRARY.find((b) => b.type === placingType)!;
+    // Affordability check FIRST — the server would also reject, but we want
+    // the player to see a clear "Not enough coins" toast instead of the
+    // building briefly appearing and then vanishing on rollback.
+    if (coins < opt.cost) {
+      showToast(`Need ${opt.cost} coins · you have ${coins}`);
+      return false;
+    }
     const currentRadius = ISLAND_TIERS[islandEra].radius;
-    const result = scorePlacement(placingType, pos, buildings, scenery, currentRadius);
+    // Placement collision / harmony scoring should only consider buildings
+    // on the CURRENT era — state.buildings now includes every era so past
+    // islands can be visited, but they don't block new placements.
+    const currentEraBuildings = buildings.filter((b) => (b.placedAtEra ?? 0) === islandEra);
+    const result = scorePlacement(placingType, pos, currentEraBuildings, scenery, currentRadius);
     if (!result.valid) { showToast(result.reason || "Can't place here"); return false; }
     const pendingId = `pending-${Date.now()}`;
     setPlacingType(null);
+    // Optimistic updates so the UI reflects the cost immediately. The
+    // Convex sync bridge will replace `buildings` and reconcile `coins` with
+    // the server once the mutation lands. On failure we roll both back.
     setBuildings((bs) => [
       ...bs,
       {
@@ -551,8 +575,10 @@ export const GameProvider = ({
         score: result.score,
         buildProgress: 0,
         buildTime: opt.buildDays,
+        placedAtEra: islandEra,
       },
     ]);
+    setCoins((c) => c - opt.cost);
 
     const persist = onBuildingPlacedRef.current;
     if (!persist) {
@@ -563,18 +589,18 @@ export const GameProvider = ({
     showToast(`Placing ${opt.name}...`);
     Promise.resolve(persist(placingType, pos[0], pos[1], opt.cost, opt.buildDays, opt.logCost, opt.rockCost))
       .then(() => {
-        // Convex sync bridge will replace pending entries with canonical records.
         showToast(`+${result.score} harmony · ${opt.name} built!`);
       })
       .catch((err) => {
         console.error("Failed to persist building placement", err);
         setBuildings((bs) => bs.filter((b) => b.id !== pendingId));
+        setCoins((c) => c + opt.cost);
         const message = err instanceof Error ? err.message : "Failed to place building";
         showToast(message);
       });
 
     return true;
-  }, [placingType, buildings, scenery, islandEra, showToast]);
+  }, [placingType, buildings, coins, scenery, islandEra, showToast]);
 
   const cancelPlacing = useCallback(() => setPlacingType(null), []);
 
@@ -591,22 +617,40 @@ export const GameProvider = ({
   // (not just the one who clicked Fly) can open the visit UI for any era
   // they've already graduated past, because era lives on the server.
   const islandHistory = useMemo<IslandSnapshot[]>(() => {
+    // Group every synced building by the era it was placed in so the Visit
+    // UI can replay an old island's layout. `buildings` now holds ALL eras
+    // (the Convex bridge stopped filtering); we bucket them once here.
+    const buildingsByEra = new Map<number, Building[]>();
+    for (const b of buildings) {
+      const era = b.placedAtEra ?? 0;
+      const bucket = buildingsByEra.get(era) ?? [];
+      bucket.push(b);
+      buildingsByEra.set(era, bucket);
+    }
+    // Look up per-era metadata (level at graduation, date) from the server
+    // snapshot array. Older islands created before this existed will have
+    // undefined entries — fall back to zeros + empty string for those.
+    const snapshotByEra = new Map<number, EraSnapshot>();
+    for (const s of eraSnapshots) {
+      snapshotByEra.set(s.era, s);
+    }
     const entries: IslandSnapshot[] = [];
     for (let era = 0; era < islandEra; era += 1) {
       const tier = ISLAND_TIERS[era];
       if (!tier) continue;
+      const snap = snapshotByEra.get(era);
       entries.push({
         era,
         name: tier.name,
         emoji: tier.emoji,
-        buildings: [],        // visit view fetches its own snapshot
-        level: 0,
-        coinsEarned: 0,
-        graduatedAt: "",
+        buildings: buildingsByEra.get(era) ?? [],
+        level: snap?.level ?? 0,
+        coinsEarned: snap?.currency ?? 0,
+        graduatedAt: snap ? new Date(snap.graduatedAt).toISOString() : "",
       });
     }
     return entries;
-  }, [islandEra]);
+  }, [islandEra, buildings, eraSnapshots]);
 
   // Derived: group motivation factor (0–1). Used by ticker + UI.
   const groupMotivation = useMemo(() => {

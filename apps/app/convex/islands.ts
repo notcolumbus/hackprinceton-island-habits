@@ -233,9 +233,59 @@ export const graduateEra = mutation({
   async handler(ctx, { islandId }) {
     const island = await ctx.db.get(islandId);
     if (!island) throw new Error("Island not found");
-    const nextEra = (island.era ?? 0) + 1;
-    await ctx.db.patch(islandId, { era: nextEra });
+    const currentEra = island.era ?? 0;
+    const nextEra = currentEra + 1;
+    // Snapshot the era the player is leaving so the Visit UI can show the
+    // real level / coins / graduation date later. Existing snapshots are
+    // kept; we just append the outgoing era.
+    const prevSnapshots = island.eraSnapshots ?? [];
+    const snapshot = {
+      era: currentEra,
+      level: island.islandLevel ?? 0,
+      currency: island.currency ?? 0,
+      graduatedAt: Date.now(),
+    };
+    await ctx.db.patch(islandId, {
+      era: nextEra,
+      eraSnapshots: [...prevSnapshots, snapshot],
+    });
     return { era: nextEra };
+  },
+});
+
+// Backfill snapshots for an island that graduated before eraSnapshots was
+// tracked. Creates a stub entry for every past era using the island's
+// *current* level/currency — not historically accurate, but enough for the
+// Visit UI to stop rendering 'Lv.0 when left' + Invalid Date. Safe to run
+// more than once: it only appends entries that are missing.
+export const backfillEraSnapshots = mutation({
+  args: { islandId: v.id("islands") },
+  async handler(ctx, { islandId }) {
+    const island = await ctx.db.get(islandId);
+    if (!island) throw new Error("Island not found");
+    const era = island.era ?? 0;
+    if (era === 0) return { filled: 0 };
+
+    const existing = island.eraSnapshots ?? [];
+    const existingEras = new Set(existing.map((s: { era: number }) => s.era));
+    const now = Date.now();
+    const filled: { era: number; level: number; currency: number; graduatedAt: number }[] = [...existing];
+    let added = 0;
+    for (let e = 0; e < era; e += 1) {
+      if (existingEras.has(e)) continue;
+      filled.push({
+        era: e,
+        level: island.islandLevel ?? 0,
+        currency: island.currency ?? 0,
+        // Stagger timestamps so the Visit UI doesn't show identical dates.
+        graduatedAt: now - (era - e) * 86400000,
+      });
+      added += 1;
+    }
+    if (added === 0) return { filled: 0 };
+    filled.sort((a, b) => a.era - b.era);
+    await ctx.db.patch(islandId, { eraSnapshots: filled });
+    return { filled: added };
   },
 });
 

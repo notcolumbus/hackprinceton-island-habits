@@ -48,6 +48,22 @@ export const getBySpace = query({
   },
 });
 
+// Reverse lookup used by proactive senders: given an islandId, find the
+// iMessage spaceId + the exact participant tuple captured at /start time.
+// Prefer this over islandMembers for addressing — islandMembers can accrete
+// extra phones later (web-only joins) that would change which iMessage
+// thread `im.space(...phones)` resolves to.
+export const getByIsland = query({
+  args: { islandId: v.id("islands") },
+  handler: async (ctx, { islandId }) => {
+    const room = await ctx.db
+      .query("groupRooms")
+      .withIndex("by_island", (q) => q.eq("islandId", islandId))
+      .first();
+    return room ?? null;
+  },
+});
+
 export const bindSpaceToIsland = mutation({
   args: {
     spaceId: v.string(),

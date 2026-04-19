@@ -26,6 +26,15 @@ export default defineSchema({
     // sent. Weekly cron only fires for an island when dayCount crosses a new
     // multiple of 7 past this value, so each week-boundary only sends once.
     lastWeeklySummaryDayCount: v.optional(v.number()),
+    // One entry per past era the player has already graduated off. Populated
+    // by `graduateEra`. Drives the Visit UI so each retired island shows its
+    // real "Lv.N when left" and the actual graduation date.
+    eraSnapshots: v.optional(v.array(v.object({
+      era: v.number(),
+      level: v.number(),
+      currency: v.number(),
+      graduatedAt: v.number(),
+    }))),
     difficulty: v.union(v.literal("easy"), v.literal("normal"), v.literal("hard")),
     gridSize: v.object({
       width: v.number(),
@@ -34,6 +43,10 @@ export default defineSchema({
     phoneNumbers: v.array(v.string()),
     createdAt: v.number(),
     ascendedAt: v.optional(v.number()),
+    // Island-wide resource stockpiles (logs / rocks) consumed when placing
+    // buildings. Present on newer documents; older rows leave these undefined.
+    logs: v.optional(v.number()),
+    rocks: v.optional(v.number()),
   }).index("by_code", ["code"]),
 
   islandMembers: defineTable({
@@ -120,6 +133,11 @@ export default defineSchema({
     // buildings once the player flies to the next island (they still live in
     // the table so visits can browse history). Undefined = legacy = era 0.
     placedAtEra: v.optional(v.number()),
+    // Resource cost breakdown (if a building charges logs/rocks on top of
+    // currency). Present on newer documents; older rows leave these
+    // undefined and the schema tolerates both.
+    logCost: v.optional(v.number()),
+    rockCost: v.optional(v.number()),
   }).index("by_island", ["islandId"]),
 
   events: defineTable({

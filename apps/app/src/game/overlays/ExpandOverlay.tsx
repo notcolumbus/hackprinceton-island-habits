@@ -84,9 +84,11 @@ export const ExpandOverlay = () => {
                       </span>
                       <span className="text-[10px] font-bold text-foreground/60">· Lv.{snap.level} when left</span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
-                      <Clock className="h-3 w-3" />{new Date(snap.graduatedAt).toLocaleDateString()}
-                    </p>
+                    {snap.graduatedAt && !Number.isNaN(new Date(snap.graduatedAt).getTime()) && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
+                        <Clock className="h-3 w-3" />{new Date(snap.graduatedAt).toLocaleDateString()}
+                      </p>
+                    )}
                   </div>
                   <button
                     onClick={() => { close(); visitIsland(snap.era); }}
