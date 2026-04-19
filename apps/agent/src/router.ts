@@ -23,6 +23,12 @@ export const CONVEX_URL = (process.env.CONVEX_URL ?? process.env.VITE_CONVEX_URL
 export const APP_BASE_URL = (process.env.APP_BASE_URL ?? "http://localhost:5173").replace(/\/+$/, "");
 export const BACKEND_URL = (process.env.BACKEND_URL ?? "http://localhost:5001").replace(/\/+$/, "");
 export const BOT_PHONE = (process.env.BOT_PHONE ?? "+14155952874").replace(/\D/g, "");
+const KNOT_SYNC_COOLDOWN_MS = 10 * 60 * 1000;
+const KNOT_SYNC_TIMEOUT_MS = 6_000;
+const KNOT_SYNC_FAIL_BACKOFF_MS = 60_000;
+const TRANSACTION_HINT_RE = /\b(transaction|transactions|purchase|purchases|spent|spend|spending|charge|charges|charged|merchant|merchants|payment|payments|receipt|receipts|doordash|uber\s?eats|order|orders|knot)\b/i;
+const knotSyncInFlightByIsland = new Set<string>();
+const knotSyncLastAtByIsland = new Map<string, number>();
 
 export function assertEnv(): void {
   if (!PROJECT_ID || !PROJECT_SECRET) {
@@ -36,6 +42,65 @@ export function assertEnv(): void {
 }
 
 export const convex = new ConvexHttpClient(CONVEX_URL);
+
+function messageLooksTransactionRelated(body: string): boolean {
+  const normalized = body.trim().toLowerCase();
+  if (!normalized) return false;
+  return TRANSACTION_HINT_RE.test(normalized);
+}
+
+async function syncKnotTransactionsForIslandSafely(islandId: string, reason: string): Promise<void> {
+  if (!BACKEND_URL) return;
+
+  const now = Date.now();
+  const lastSyncAt = knotSyncLastAtByIsland.get(islandId) ?? 0;
+  if (knotSyncInFlightByIsland.has(islandId)) return;
+  if (now - lastSyncAt < KNOT_SYNC_COOLDOWN_MS) return;
+
+  knotSyncInFlightByIsland.add(islandId);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), KNOT_SYNC_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/knot/sync-island`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ islandId }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const raw = await res.text().catch(() => "");
+      console.error(`[knot-sync] island=${islandId} reason=${reason} failed HTTP ${res.status}: ${raw}`);
+      // Short backoff so transaction-heavy chats don't spam retries on failures.
+      knotSyncLastAtByIsland.set(islandId, Date.now() - KNOT_SYNC_COOLDOWN_MS + KNOT_SYNC_FAIL_BACKOFF_MS);
+      return;
+    }
+
+    const data = await res.json() as {
+      synced_participants?: number;
+      skipped_participants?: number;
+      total_transactions?: number;
+    };
+    knotSyncLastAtByIsland.set(islandId, Date.now());
+    console.log(
+      `[knot-sync] island=${islandId} reason=${reason}` +
+      ` synced=${data.synced_participants ?? 0}` +
+      ` skipped=${data.skipped_participants ?? 0}` +
+      ` tx=${data.total_transactions ?? 0}`,
+    );
+  } catch (err: any) {
+    const aborted = err?.name === "AbortError";
+    if (!aborted) {
+      console.error(`[knot-sync] island=${islandId} reason=${reason} error:`, err?.message ?? err);
+    } else {
+      console.warn(`[knot-sync] island=${islandId} reason=${reason} timed out after ${KNOT_SYNC_TIMEOUT_MS}ms`);
+    }
+    knotSyncLastAtByIsland.set(islandId, Date.now() - KNOT_SYNC_COOLDOWN_MS + KNOT_SYNC_FAIL_BACKOFF_MS);
+  } finally {
+    clearTimeout(timeout);
+    knotSyncInFlightByIsland.delete(islandId);
+  }
+}
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -585,6 +650,9 @@ export async function handleChat(space: any, sender: string, body: string, space
   let playerName = sender;
 
   if (island) {
+    if (messageLooksTransactionRelated(body)) {
+      await syncKnotTransactionsForIslandSafely(island._id, "chat-transaction-intent");
+    }
     try {
       const [goals, details, knotContext] = await Promise.all([
         fetchGoals(island._id, sender),
@@ -654,29 +722,7 @@ export async function syncKnotTransactionsOnBoot(): Promise<void> {
     }
 
     for (const islandId of islandIds) {
-      try {
-        const res = await fetch(`${BACKEND_URL}/api/knot/sync-island`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ islandId }),
-        });
-        if (!res.ok) {
-          const raw = await res.text().catch(() => "");
-          console.error(`[knot-sync] island=${islandId} failed HTTP ${res.status}: ${raw}`);
-          continue;
-        }
-        const data = await res.json() as {
-          synced_participants?: number;
-          total_transactions?: number;
-          skipped_participants?: number;
-        };
-        console.log(
-          `[knot-sync] island=${islandId} synced=${data.synced_participants ?? 0}` +
-          ` skipped=${data.skipped_participants ?? 0} tx=${data.total_transactions ?? 0}`,
-        );
-      } catch (err: any) {
-        console.error(`[knot-sync] island=${islandId} error:`, err?.message ?? err);
-      }
+      await syncKnotTransactionsForIslandSafely(islandId, "boot");
     }
   } catch (err: any) {
     console.error("[knot-sync] bootstrap failed:", err?.message ?? err);
