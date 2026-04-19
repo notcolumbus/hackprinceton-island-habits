@@ -11,7 +11,6 @@
 
 import { text } from "spectrum-ts";
 import { ConvexHttpClient } from "convex/browser";
-import { hasOnboarded, markOnboarded } from "./state/seen-spaces.js";
 import { appendMessage, getHistory } from "./state/chat-history.js";
 import "dotenv/config";
 
@@ -279,28 +278,6 @@ export const HELP_TEXT =
 
 export async function handleStart(space: any, message: any): Promise<void> {
   try {
-    const existingRoom = await convex.query("groupRooms:getBySpace" as any, { spaceId: space.id });
-    if (existingRoom?.room && existingRoom?.island) {
-      const participants = collectParticipants(space, message);
-      if (participants.length) {
-        await convex.mutation("groupRooms:syncParticipants" as any, {
-          spaceId: space.id,
-          participants,
-        });
-      }
-      markOnboarded(space.id);
-      await space.send(
-        text(
-          `Island already started for this group.\n\nRoom Code: ${existingRoom.room.code}\nJoin: ${APP_BASE_URL}/dashboard?code=${existingRoom.room.code}`
-        )
-      );
-      return;
-    }
-
-    if (hasOnboarded(space.id)) {
-      await space.send(text("The start process has already been initiated."));
-      return;
-    }
     const participants = collectParticipants(space, message);
     if (!participants.length) {
       await space.send(text("Couldn't detect group members. Start this in a group iMessage with phone numbers or iCloud emails."));
@@ -315,7 +292,6 @@ export async function handleStart(space: any, message: any): Promise<void> {
       code,
       participants,
     });
-    markOnboarded(space.id);
     await space.send(text(`Island Habits started.\n\nRoom Code: ${code}\nJoin: ${APP_BASE_URL}/dashboard?code=${code}`));
     console.log(`[/start] code=${code} participants=${participants.join(",")}`);
   } catch (err: any) {
