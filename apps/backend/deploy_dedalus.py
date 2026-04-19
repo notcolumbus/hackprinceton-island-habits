@@ -212,21 +212,18 @@ def save_state(updates: dict):
 # ── Clone ─────────────────────────────────────────────────────────────
 
 def clone_repo(client: Dedalus, machine_id: str):
-    """Clone the dedalus-deploy branch (which contains setup_machine.sh scripts)."""
+    """Force-nuke any existing /home/machine/app and clone fresh.
+    Dedalus machine images ship with a corrupt .git/config at that path,
+    so we cannot trust any pre-existing state."""
     out = exec_cmd(client, machine_id, [
         "/bin/bash", "-c",
-        # Validate existing repo; nuke if corrupt; clone or pull
-        f"if [ -d {APP_DIR}/.git ]; then "
-        f"  git -C {APP_DIR} rev-parse HEAD >/dev/null 2>&1 || rm -rf {APP_DIR}; "
-        f"fi && "
-        f"if [ -d {APP_DIR}/.git ]; then "
-        f"  cd {APP_DIR} && git pull; "
-        f"else "
-        f"  git clone --branch {REPO_BRANCH} {REPO_URL} {APP_DIR}; "
-        f"fi && echo OK",
-    ], "Cloning repo (branch: dedalus-deploy)", timeout=120)
+        f"rm -rf {APP_DIR} ; "
+        f"git clone --branch {REPO_BRANCH} {REPO_URL} {APP_DIR} && echo OK",
+    ], f"Cloning repo (branch: {REPO_BRANCH})", timeout=120)
     if "OK" not in out:
-        print("   ⚠️  Clone may have issues — continuing anyway")
+        print("   ❌  Clone failed — cannot continue")
+        print(f"      {out[:400]}")
+        sys.exit(1)
 
 
 # ── Write agent .env ──────────────────────────────────────────────────
@@ -334,16 +331,6 @@ def deploy_frontend(
     print(f"\n✅  Frontend live: {preview_url}")
     return machine_id, preview_url
 
-
-def patch_and_restart(client: Dedalus, machine_id: str, env_file: str,
-                      key: str, value: str, kill_pattern: str, restart_cmd: str):
-    """Append a key to .env and restart the process in one exec_cmd call."""
-    exec_cmd(client, machine_id, [
-        "/bin/bash", "-c",
-        f"echo '{key}={value}' >> {env_file} && "
-        f"pkill -f '{kill_pattern}' 2>/dev/null; sleep 2 && "
-        f"{restart_cmd} && echo restarted",
-    ], f"Patching {key} + restart", timeout=30)
 
 
 # ── Lifecycle ─────────────────────────────────────────────────────────
@@ -512,35 +499,30 @@ def main():
             frontend_mid, frontend_url = deploy_frontend(client, backend_url=backend_url,
                                                           machine_id=state.get("frontend", ""))
 
+            CPYTHON  = "/home/machine/python/bin/python3"
+            NODE_BIN = "/home/machine/node-v20.18.0-linux-x64/bin"
+
             # Patch backend with agent URL now that we know it
             print(f"\n🔧  Patching backend AGENT_URL → {agent_url}")
-            NODE_BIN = "/home/machine/node-v20.18.0-linux-x64/bin"
-            CPYTHON  = "/home/machine/python/bin/python3"
-            patch_and_restart(
-                client, backend_mid,
-                env_file=f"{BACKEND_DIR}/.env",
-                key="AGENT_URL", value=agent_url,
-                kill_pattern="app.py",
-                restart_cmd=(
-                    f"cd {BACKEND_DIR} && "
-                    f"(command -v python3 >/dev/null 2>&1 && PYTHON=python3 || PYTHON={CPYTHON}) && "
-                    f"setsid $PYTHON app.py > /home/machine/backend.log 2>&1 &"
-                ),
-            )
+            exec_cmd(client, backend_mid, [
+                "/bin/bash", "-c",
+                f"echo 'AGENT_URL={agent_url}' >> {BACKEND_DIR}/.env && "
+                f"pkill -f 'app.py' 2>/dev/null; sleep 1; "
+                f"PY=$(command -v python3 2>/dev/null || echo {CPYTHON}); "
+                f"cd {BACKEND_DIR} && setsid $PY app.py > /home/machine/backend.log 2>&1 & "
+                f"echo restarted",
+            ], "Restarting backend with AGENT_URL", timeout=30)
 
             # Patch agent with frontend URL
             print(f"\n🔧  Patching agent APP_BASE_URL → {frontend_url}")
-            patch_and_restart(
-                client, agent_mid,
-                env_file=f"{AGENT_DIR}/.env",
-                key="APP_BASE_URL", value=frontend_url,
-                kill_pattern="tsx src/index.ts",
-                restart_cmd=(
-                    f"export PATH={NODE_BIN}:$PATH && "
-                    f"cd {AGENT_DIR} && "
-                    f"setsid npx tsx src/index.ts > /home/machine/agent.log 2>&1 &"
-                ),
-            )
+            exec_cmd(client, agent_mid, [
+                "/bin/bash", "-c",
+                f"echo 'APP_BASE_URL={frontend_url}' >> {AGENT_DIR}/.env && "
+                f"pkill -f 'tsx src/index.ts' 2>/dev/null; sleep 1; "
+                f"export PATH={NODE_BIN}:$PATH; "
+                f"cd {AGENT_DIR} && setsid npx tsx src/index.ts > /home/machine/agent.log 2>&1 & "
+                f"echo restarted",
+            ], "Restarting agent with APP_BASE_URL", timeout=30)
 
             print(f"\n{'=' * 60}")
             print("🎉  Island of Habits is live!")
