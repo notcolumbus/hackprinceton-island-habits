@@ -158,24 +158,27 @@ export function parseCommand(raw: string): Command {
   const body = raw.trim();
   const lower = body.toLowerCase();
 
-  if (lower === "/start") return { kind: "start" };
-  if (lower === "/help" || lower === "help") return { kind: "help" };
-  if (lower === "/goals" || lower === "goals" || lower === "my goals") return { kind: "goals" };
-  if (lower === "/status" || lower === "status") return { kind: "status" };
+  // Commands must be explicit slash-commands.
+  if (!lower.startsWith("/")) return { kind: "none" };
 
-  let m = body.match(/^\/?add\s+(?:goal[:\s]+)?(.+)$/i);
+  if (lower === "/start") return { kind: "start" };
+  if (lower === "/help") return { kind: "help" };
+  if (lower === "/goals") return { kind: "goals" };
+  if (lower === "/status") return { kind: "status" };
+
+  let m = body.match(/^\/add\s+(?:goal[:\s]+)?(.+)$/i);
   if (m) return { kind: "add", text: m[1].trim() };
 
-  m = body.match(/^\/?drop\s+(\d+)\s*$/i);
+  m = body.match(/^\/drop\s+(\d+)\s*$/i);
   if (m) return { kind: "drop", index: parseInt(m[1], 10) };
 
-  m = body.match(/^\/?edit\s+(\d+)\s+(.+)$/i);
+  m = body.match(/^\/edit\s+(\d+)\s+(.+)$/i);
   if (m) return { kind: "edit", index: parseInt(m[1], 10), text: m[2].trim() };
 
-  m = body.match(/^\/?done\s+(\d+)\s*$/i);
+  m = body.match(/^\/done\s+(\d+)\s*$/i);
   if (m) return { kind: "done", index: parseInt(m[1], 10) };
 
-  m = body.match(/^\/?undo\s+(\d+)\s*$/i);
+  m = body.match(/^\/undo\s+(\d+)\s*$/i);
   if (m) return { kind: "undo", index: parseInt(m[1], 10) };
 
   return { kind: "none" };
@@ -191,8 +194,7 @@ export const HELP_TEXT =
   "✅  /done <n> — mark the Nth goal done for today (+1 XP, +10 💰)\n" +
   "↩️  /undo <n> — undo today's check-in for the Nth goal\n" +
   "📊  /status — today's progress & motivation\n" +
-  "❓  /help — show this list\n\n" +
-  "Tip: you can drop the leading slash (e.g. `done 1`).";
+  "❓  /help — show this list";
 
 
 // ── Handlers ──────────────────────────────────────────────────────────
