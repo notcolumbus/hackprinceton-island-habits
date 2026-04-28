@@ -1,7 +1,7 @@
 import json
 import os
 import re
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import requests
 
@@ -22,19 +22,127 @@ def _extract_text_from_generate_content(resp_json: dict) -> str:
     parts = content.get("parts") or []
     if not parts:
         return ""
-    # Prefer non-thought parts when available.
     for part in parts:
         if part.get("thought") is True:
             continue
         text = part.get("text")
         if text:
             return str(text).strip()
-    # Fallback: return the last text part.
     for part in reversed(parts):
         text = part.get("text")
         if text:
             return str(text).strip()
     return ""
+
+
+def _split_reasoning(raw: str) -> Tuple[str, Optional[str]]:
+    content = (raw or "").strip()
+    if not content:
+        return "", None
+    reasoning = None
+    if "</think>" in content:
+        parts = content.split("</think>", 1)
+        reasoning_raw = parts[0]
+        content = parts[1].strip()
+        if "<think>" in reasoning_raw:
+            reasoning_raw = reasoning_raw.split("<think>", 1)[1]
+        reasoning = reasoning_raw.strip() or None
+    elif "<think>" in content:
+        parts = content.split("<think>", 1)
+        content = parts[0].strip()
+        reasoning = parts[1].strip() or None
+    return content, reasoning
+
+
+def _call_gemma_raw(
+    parts: list[dict[str, Any]],
+    *,
+    max_output_tokens: int,
+    temperature: float,
+    response_mime_type: Optional[str] = None,
+    timeout: int = 45,
+) -> str:
+    if not GOOGLE_API_KEY:
+        raise RuntimeError("Missing GOOGLE_API_KEY")
+
+    url = f"{GOOGLE_API_URL}/models/{GOOGLE_MODEL}:generateContent?key={GOOGLE_API_KEY}"
+    generation_config: dict[str, Any] = {
+        "temperature": temperature,
+        "maxOutputTokens": max_output_tokens,
+    }
+    if response_mime_type:
+        generation_config["responseMimeType"] = response_mime_type
+
+    payload = {
+        "contents": [{"role": "user", "parts": parts}],
+        "generationConfig": generation_config,
+    }
+    response = requests.post(
+        url,
+        headers={"Content-Type": "application/json"},
+        json=payload,
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    return _extract_text_from_generate_content(response.json())
+
+
+def call_gemma_text(
+    system: str,
+    user: str,
+    *,
+    max_output_tokens: int = 200,
+    temperature: float = 0.65,
+) -> Tuple[str, Optional[str]]:
+    prompt = (
+        "System instructions:\n"
+        f"{system}\n\n"
+        "User input:\n"
+        f"{user}"
+    )
+    raw_text = _call_gemma_raw(
+        [{"text": prompt}],
+        max_output_tokens=max_output_tokens,
+        temperature=temperature,
+    )
+    return _split_reasoning(raw_text)
+
+
+def _parse_json_response(raw_text: str) -> Tuple[dict, Optional[str]]:
+    content, reasoning = _split_reasoning(raw_text)
+    cleaned = _strip_json_fences(content)
+    try:
+        return json.loads(cleaned), reasoning
+    except json.JSONDecodeError:
+        for match in reversed(list(re.finditer(r"\{[\s\S]*\}", cleaned))):
+            try:
+                return json.loads(match.group(0)), reasoning
+            except json.JSONDecodeError:
+                continue
+        raise ValueError(f"Gemini returned non-JSON: {raw_text}")
+
+
+def call_gemma_json(
+    system: str,
+    user: str,
+    *,
+    max_output_tokens: int = 220,
+    temperature: float = 0.2,
+) -> Tuple[dict, Optional[str]]:
+    prompt = (
+        "System instructions:\n"
+        f"{system}\n\n"
+        "Respond with a single valid JSON object and no additional text.\n\n"
+        "User input:\n"
+        f"{user}"
+    )
+    raw_text = _call_gemma_raw(
+        [{"text": prompt}],
+        max_output_tokens=max_output_tokens,
+        temperature=temperature,
+        response_mime_type="application/json",
+    )
+    return _parse_json_response(raw_text)
 
 
 def call_gemma_vision_json(
@@ -43,47 +151,18 @@ def call_gemma_vision_json(
     mime_type: str = "image/jpeg",
     max_output_tokens: int = 220,
 ) -> Tuple[dict, Optional[str]]:
-    if not GOOGLE_API_KEY:
-        raise RuntimeError("Missing GOOGLE_API_KEY")
-
-    url = f"{GOOGLE_API_URL}/models/{GOOGLE_MODEL}:generateContent?key={GOOGLE_API_KEY}"
-    payload = {
-        "contents": [
+    raw_text = _call_gemma_raw(
+        [
+            {"text": prompt},
             {
-                "role": "user",
-                "parts": [
-                    {"text": prompt},
-                    {
-                        "inlineData": {
-                            "mimeType": mime_type,
-                            "data": image_base64,
-                        }
-                    },
-                ],
-            }
+                "inlineData": {
+                    "mimeType": mime_type,
+                    "data": image_base64,
+                }
+            },
         ],
-        "generationConfig": {
-            "temperature": 0.1,
-            "maxOutputTokens": max_output_tokens,
-            "responseMimeType": "application/json",
-        },
-    }
-    r = requests.post(
-        url,
-        headers={"Content-Type": "application/json"},
-        json=payload,
-        timeout=45,
+        max_output_tokens=max_output_tokens,
+        temperature=0.1,
+        response_mime_type="application/json",
     )
-    r.raise_for_status()
-    raw_text = _extract_text_from_generate_content(r.json())
-    cleaned = _strip_json_fences(raw_text)
-    try:
-        return json.loads(cleaned), None
-    except json.JSONDecodeError:
-        # Fallback: attempt to parse the last JSON object in the output.
-        for m in reversed(list(re.finditer(r"\{[\s\S]*\}", cleaned))):
-            try:
-                return json.loads(m.group(0)), None
-            except json.JSONDecodeError:
-                continue
-        raise ValueError(f"Gemma returned non-JSON: {raw_text}")
+    return _parse_json_response(raw_text)

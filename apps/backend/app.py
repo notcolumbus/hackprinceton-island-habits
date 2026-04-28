@@ -21,7 +21,7 @@ app.register_blueprint(jobs_bp)
 KNOT_ENVIRONMENT = os.getenv("KNOT_ENVIRONMENT", "production")
 KNOT_CLIENT_ID = os.getenv("KNOT_CLIENT_ID", "")
 KNOT_SECRET = os.getenv("KNOT_SECRET", "")
-K2_API_KEY = os.getenv("K2_API_KEY", "")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 CONVEX_URL = os.getenv("CONVEX_URL", "")
 KNOT_BASE_URL = (
     "https://production.knotapi.com"
@@ -203,8 +203,8 @@ def health():
 @app.get("/healthz")
 def healthz():
     missing_required = []
-    if not K2_API_KEY:
-        missing_required.append("K2_API_KEY")
+    if not GOOGLE_API_KEY:
+        missing_required.append("GOOGLE_API_KEY")
     if not CONVEX_URL:
         missing_required.append("CONVEX_URL")
     return jsonify(

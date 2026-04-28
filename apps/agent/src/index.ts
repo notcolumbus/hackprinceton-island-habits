@@ -19,6 +19,7 @@ import {
   autoCheckInFromPhoto,
   parseCommand,
   senderAddress,
+  collectParticipants,
   dispatchKnownCommand,
   handleChat,
   syncKnotTransactionsOnBoot,
@@ -100,7 +101,10 @@ async function main(): Promise<void> {
         console.log(`└─ (empty body — tapback or system message, skipped)`);
         continue;
       }
-      if (!isTagged(body)) {
+      const participants = collectParticipants(space as any, message as any);
+      const isDirectChat = participants.length <= 1;
+      const hasWakeWord = isTagged(body);
+      if (!hasWakeWord && !isDirectChat) {
         console.log(`└─ (no "isla" mention — skipped)`);
         continue;
       }

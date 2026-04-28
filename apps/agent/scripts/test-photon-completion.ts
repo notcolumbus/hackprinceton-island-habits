@@ -1,12 +1,12 @@
 /**
  * test-photon-completion.ts
  *
- * Photon × K2 Think V2 completion-aware listener.
+ * Photon × Gemini completion-aware listener.
  *
  * Unlike the existing onboarding / handler flows, this listener does NOT
  * react to slash commands. It watches the session history of each iMessage
- * space and asks K2 Think V2 whether the latest user message indicates
- * they just completed a habit / task. The agent replies ONLY when K2
+ * space and asks Gemini whether the latest user message indicates
+ * they just completed a habit / task. The agent replies ONLY when Gemini
  * classifies the message as a completion event.
  *
  * Does not edit any existing photon files — runs standalone.
@@ -14,13 +14,13 @@
  * Usage:
  *   npx tsx scripts/test-photon-completion.ts              # live listen
  *   npx tsx scripts/test-photon-completion.ts --dry "I just finished my run!"
- *       # run the K2 classifier on a single string (no Photon connection)
+ *       # run the Gemini classifier on a single string (no Photon connection)
  *
  * Required env (from apps/agent/.env or apps/backend/.env):
  *   projid, secret                  — Photon project credentials
- *   K2_API_KEY                      — K2 Think V2 API key
- *   K2_API_URL (optional)           — defaults to https://api.k2think.ai/v1/chat/completions
- *   K2_MODEL   (optional)           — defaults to MBZUAI-IFM/K2-Think-v2
+ *   GOOGLE_API_KEY                  — Gemini API key
+ *   GOOGLE_API_URL (optional)       — defaults to https://generativelanguage.googleapis.com/v1beta
+ *   GOOGLE_MODEL   (optional)       — defaults to gemma-4-26b-a4b-it
  */
 
 import { Spectrum, text } from "spectrum-ts";
@@ -29,10 +29,10 @@ import "dotenv/config";
 
 const PROJECT_ID = process.env.projid;
 const PROJECT_SECRET = process.env.secret;
-const K2_API_KEY = process.env.K2_API_KEY ?? "";
-const K2_API_URL =
-  process.env.K2_API_URL ?? "https://api.k2think.ai/v1/chat/completions";
-const K2_MODEL = process.env.K2_MODEL ?? "MBZUAI-IFM/K2-Think-v2";
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY ?? "";
+const GOOGLE_API_URL =
+  process.env.GOOGLE_API_URL ?? "https://generativelanguage.googleapis.com/v1beta";
+const GOOGLE_MODEL = process.env.GOOGLE_MODEL ?? "gemma-4-26b-a4b-it";
 
 const HISTORY_LIMIT = 12;
 const AGENT_NAME = "Isla";
@@ -83,49 +83,73 @@ Example 1 — user: "just finished my 30 min run!"
 Example 2 — user: "ugh I don't feel like reading tonight"
 {"completed": false, "task": null, "confidence": 0.9, "reply": null}`;
 
-async function classifyWithK2(
+function extractGeminiText(data: any): string {
+  const candidates = data?.candidates ?? [];
+  const parts = candidates?.[0]?.content?.parts ?? [];
+  for (const part of parts) {
+    if (part?.thought === true) continue;
+    if (typeof part?.text === "string" && part.text.trim()) return part.text.trim();
+  }
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const text = parts?.[i]?.text;
+    if (typeof text === "string" && text.trim()) return text.trim();
+  }
+  return "";
+}
+
+async function classifyWithGemini(
   historyBeforeNew: Turn[],
   latestSender: string,
   latestText: string,
 ): Promise<CompletionVerdict> {
-  if (!K2_API_KEY) {
-    throw new Error("K2_API_KEY is not set (apps/backend/.env)");
+  if (!GOOGLE_API_KEY) {
+    throw new Error("GOOGLE_API_KEY is not set (apps/backend/.env)");
   }
 
   const transcript = renderHistory(historyBeforeNew) || "(no prior turns)";
   const userPrompt = `Recent transcript:\n${transcript}\n\nNew message from user(${latestSender}):\n${latestText}\n\nReturn JSON only.`;
+  const url = `${GOOGLE_API_URL}/models/${GOOGLE_MODEL}:generateContent?key=${GOOGLE_API_KEY}`;
 
-  const resp = await fetch(K2_API_URL, {
+  const resp = await fetch(url, {
     method: "POST",
     headers: {
-      accept: "application/json",
       "Content-Type": "application/json",
-      Authorization: `Bearer ${K2_API_KEY}`,
     },
     body: JSON.stringify({
-      model: K2_MODEL,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userPrompt },
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text:
+                `System instructions:\n${SYSTEM_PROMPT}\n\n` +
+                `User input:\n${userPrompt}`,
+            },
+          ],
+        },
       ],
-      stream: false,
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 220,
+        responseMimeType: "application/json",
+      },
     }),
   });
 
   if (!resp.ok) {
     const body = await resp.text();
-    throw new Error(`K2 HTTP ${resp.status}: ${body.slice(0, 300)}`);
+    throw new Error(`Gemini HTTP ${resp.status}: ${body.slice(0, 300)}`);
   }
 
   const data: any = await resp.json();
-  const raw: string = data?.choices?.[0]?.message?.content ?? "";
-  if (process.env.K2_DEBUG) {
-    console.log("── K2 raw content ──\n" + raw + "\n────────────────────");
+  const raw = extractGeminiText(data);
+  if (process.env.GEMINI_DEBUG || process.env.K2_DEBUG) {
+    console.log("── Gemini raw content ──\n" + raw + "\n────────────────────────");
   }
   return parseVerdict(raw);
 }
 
-// K2 Think V2 is a reasoning model. Its `content` typically looks like:
+// Gemini may return fenced JSON or extra prose around JSON.
 //
 //   <think> ... chain-of-thought, often contains { } braces ... </think>
 //   ```json
@@ -201,7 +225,7 @@ function parseVerdict(raw: string): CompletionVerdict {
 
   const jsonStr = extractJsonBlock(raw);
   if (!jsonStr) {
-    if (process.env.K2_DEBUG) console.warn("parseVerdict: no JSON block found");
+    if (process.env.GEMINI_DEBUG || process.env.K2_DEBUG) console.warn("parseVerdict: no JSON block found");
     return fallback;
   }
 
@@ -217,7 +241,7 @@ function parseVerdict(raw: string): CompletionVerdict {
           : 0,
     };
   } catch (err) {
-    if (process.env.K2_DEBUG) {
+    if (process.env.GEMINI_DEBUG || process.env.K2_DEBUG) {
       console.warn(`parseVerdict: JSON.parse failed on: ${jsonStr.slice(0, 200)}`);
     }
     return fallback;
@@ -228,8 +252,8 @@ async function runListen(): Promise<void> {
   if (!PROJECT_ID || !PROJECT_SECRET) {
     throw new Error("Missing projid/secret in apps/agent/.env");
   }
-  if (!K2_API_KEY) {
-    throw new Error("Missing K2_API_KEY — copy it from apps/backend/.env into apps/agent/.env");
+  if (!GOOGLE_API_KEY) {
+    throw new Error("Missing GOOGLE_API_KEY — copy it from apps/backend/.env into apps/agent/.env");
   }
 
   const app = await Spectrum({
@@ -238,11 +262,11 @@ async function runListen(): Promise<void> {
     providers: [imessage.config()],
   });
 
-  console.log(`\n🌿 ${AGENT_NAME} — completion listener (K2 Think V2)`);
+  console.log(`\n🌿 ${AGENT_NAME} — completion listener (Gemini)`);
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log(`Model: ${K2_MODEL}`);
+  console.log(`Model: ${GOOGLE_MODEL}`);
   console.log(`History per space: last ${HISTORY_LIMIT} turns`);
-  console.log("Silent unless K2 detects a habit completion.\n");
+  console.log("Silent unless Gemini detects a habit completion.\n");
 
   for await (const [space, message] of app.messages) {
     const content = message.content[0];
@@ -258,9 +282,9 @@ async function runListen(): Promise<void> {
 
     let verdict: CompletionVerdict;
     try {
-      verdict = await classifyWithK2(history, sender, body);
+      verdict = await classifyWithGemini(history, sender, body);
     } catch (err: any) {
-      console.error(`  ↳ K2 error: ${err?.message ?? err}`);
+      console.error(`  ↳ Gemini error: ${err?.message ?? err}`);
       pushTurn(spaceId, { role: "user", sender, text: body });
       continue;
     }
@@ -284,7 +308,7 @@ async function runListen(): Promise<void> {
 }
 
 async function runDry(input: string): Promise<void> {
-  const verdict = await classifyWithK2([], "tester", input);
+  const verdict = await classifyWithGemini([], "tester", input);
   console.log(JSON.stringify(verdict, null, 2));
 }
 

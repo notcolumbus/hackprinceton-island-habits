@@ -21,6 +21,6 @@ def agent_gossip():
         if reasoning:
             result["_reasoning"] = reasoning
     except ValueError as e:
-        return jsonify({"error": "K2 returned non-JSON", "raw": str(e)}), 502
+        return jsonify({"error": "Gemini returned non-JSON", "raw": str(e)}), 502
 
     return jsonify(result)

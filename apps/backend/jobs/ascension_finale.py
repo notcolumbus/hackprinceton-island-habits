@@ -19,7 +19,7 @@ def ascension_finale():
     try:
         narrative, reasoning = _generate_ascension_finale(total_days, total_buildings, total_goals)
     except ValueError as e:
-        return jsonify({"error": "K2 returned non-JSON", "raw": str(e)}), 502
+        return jsonify({"error": "Gemini returned non-JSON", "raw": str(e)}), 502
 
     if island_phones:
         send_group_message(island_phones, narrative)

@@ -41,7 +41,7 @@ def _friendly_name(member: dict) -> str:
 
 @jobs_bp.post("/morning-reminder")
 def morning_reminder():
-    """Send one K2-generated group iMessage per island.
+    """Send one Gemini-generated group iMessage per island.
 
     All members (with or without goals) are mentioned in the same message,
     which is delivered to the island's group iMessage thread — not DMs.
@@ -65,7 +65,7 @@ def morning_reminder():
 
     for island_id, island_members in by_island.items():
         try:
-            # Yesterday's team stats — used to ground the K2 narrative.
+            # Yesterday's team stats — used to ground the Gemini narrative.
             stats = db.query(
                 "jobQueries:getYesterdayIslandStats",
                 {"islandId": island_id, "date": yesterday},
@@ -79,7 +79,7 @@ def morning_reminder():
                 parts.append(f"{missed_names} missed theirs.")
             team_recap = " ".join(parts) if parts else "Yesterday was quiet on the island."
 
-            # Build the team list for K2.
+            # Build the team list for Gemini.
             roster = []
             for m in island_members:
                 roster.append({
@@ -87,9 +87,9 @@ def morning_reminder():
                     "goals": [g["text"] for g in (m.get("goals") or [])],
                 })
 
-            print(f"[morning-reminder] K2 call for island {island_id} (members={len(roster)})")
+            print(f"[morning-reminder] Gemini call for island {island_id} (members={len(roster)})")
             message, reasoning = generate_group_morning_reminder(roster, team_recap)
-            print(f"[morning-reminder] K2 → {message[:100]}")
+            print(f"[morning-reminder] Gemini → {message[:100]}")
 
             send_island_message(island_id, message)
 

@@ -23,6 +23,7 @@ export const getActiveMembersWithGoals = query({
         islandCache.set(member.islandId, island);
       }
       if (!island) continue;
+      if (island.status !== "active") continue;
 
       const agent = await ctx.db
         .query("agents")
@@ -75,6 +76,7 @@ export const getAllMembersForReminder = query({
         islandCache.set(member.islandId, island);
       }
       if (!island) continue;
+      if (island.status !== "active") continue;
 
       const agents = await ctx.db
         .query("agents")

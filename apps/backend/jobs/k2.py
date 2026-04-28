@@ -1,14 +1,8 @@
 import json
-import os
-import re
 from pathlib import Path
 from typing import Optional, Tuple
 
-import requests
-
-K2_API_URL = os.environ.get("K2_API_URL", "https://api.k2think.ai/v1/chat/completions")
-K2_API_KEY = os.environ.get("K2_API_KEY", "")
-K2_MODEL = os.environ.get("K2_MODEL", "MBZUAI-IFM/K2-Think-v2")
+from jobs.gemma import call_gemma_json, call_gemma_text
 
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
@@ -18,54 +12,23 @@ def _load(name: str) -> str:
 
 
 def call_k2(system: str, user: str, max_tokens: int = 200) -> Tuple[str, Optional[str]]:
-    r = requests.post(
-        K2_API_URL,
-        headers={"Authorization": f"Bearer {K2_API_KEY}", "Content-Type": "application/json"},
-        json={
-            "model": K2_MODEL,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "max_tokens": max_tokens,
-        },
-        timeout=30,
+    # Back-compat shim: keep existing call sites while routing all text
+    # generation to Gemini/Gemma.
+    return call_gemma_text(
+        system=system,
+        user=user,
+        max_output_tokens=max_tokens,
     )
-    r.raise_for_status()
-    content = r.json()["choices"][0]["message"]["content"]
-    reasoning = None
-
-    if "</think>" in content:
-        parts = content.split("</think>", 1)
-        reasoning_raw = parts[0]
-        content = parts[1].strip()
-        if "<think>" in reasoning_raw:
-            reasoning_raw = reasoning_raw.split("<think>", 1)[1]
-        reasoning = reasoning_raw.strip()
-    elif "<think>" in content:
-        parts = content.split("<think>", 1)
-        reasoning = parts[1].strip()
-        content = parts[0].strip()
-
-    return content, reasoning
 
 
 def call_k2_json(system: str, user: str, max_tokens: int = 200) -> Tuple[dict, Optional[str]]:
-    raw, reasoning = call_k2(system, user, max_tokens)
-    # Strip markdown code fences
-    raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.DOTALL).strip()
-    # Try parsing the full string first (handles nested structures like {"lines": [...]})
-    try:
-        return json.loads(raw), reasoning
-    except json.JSONDecodeError:
-        pass
-    # Fall back: try each flat {...} block from last to first
-    for m in reversed(list(re.finditer(r"\{[^{}]+\}", raw, re.DOTALL))):
-        try:
-            return json.loads(m.group(0)), reasoning
-        except json.JSONDecodeError:
-            continue
-    raise ValueError(f"K2 returned non-JSON: {raw}")
+    # Back-compat shim: keep existing call sites while routing all JSON
+    # generation to Gemini/Gemma.
+    return call_gemma_json(
+        system=system,
+        user=user,
+        max_output_tokens=max_tokens,
+    )
 
 
 # ── Named helpers ─────────────────────────────────────────────────────────────
@@ -93,7 +56,7 @@ def generate_group_morning_reminder(
 ) -> Tuple[str, Optional[str]]:
     """Generate one morning iMessage addressed to the whole island group.
 
-    `members` is a list of `{"name": str, "goals": list[str]}`. K2 writes a
+    `members` is a list of `{"name": str, "goals": list[str]}`. Gemini writes a
     short group-chat-style message that greets the team, pokes at yesterday's
     recap, and nudges each person (or the team collectively) toward today's
     goals. Reuses the morning-reminder prompt but with a team-scoped payload.
@@ -132,7 +95,7 @@ def generate_weekly_summary(
     """Build a team-style weekly recap prompt.
 
     `per_user_breakdown` is a list of `{"name", "completed", "missed"}` so
-    K2 can name-check individuals instead of referring to phone numbers.
+    Gemini can name-check individuals instead of referring to phone numbers.
     Falls back to the old summary shape when breakdown isn't supplied.
     """
     lines = [
@@ -170,7 +133,7 @@ def generate_personality(
     player_name: str,
     approved_goals: list,
     random_seed_trait: str,
-) -> dict:
+) -> Tuple[dict, Optional[str]]:
     user = (
         f"Player name: {player_name}\n"
         f"Approved goals: {', '.join(approved_goals)}\n"
@@ -227,7 +190,7 @@ def generate_ascension_finale(
     total_days: int,
     total_buildings: int,
     total_goals: int,
-) -> str:
+) -> Tuple[str, Optional[str]]:
     user = (
         f"Total days on island: {total_days}\n"
         f"Total buildings constructed: {total_buildings}\n"

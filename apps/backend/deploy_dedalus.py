@@ -73,9 +73,9 @@ ENV_VARS = {
     "KNOT_CLIENT_ID": os.getenv("KNOT_CLIENT_ID", ""),
     "KNOT_SECRET": os.getenv("KNOT_SECRET", ""),
     "CONVEX_URL": os.getenv("CONVEX_URL", "https://tidy-vole-519.convex.cloud"),
-    "K2_API_KEY": os.getenv("K2_API_KEY", ""),
-    "K2_API_URL": os.getenv("K2_API_URL", "https://api.k2think.ai/v1/chat/completions"),
-    "K2_MODEL": os.getenv("K2_MODEL", "MBZUAI-IFM/K2-Think-v2"),
+    "GOOGLE_API_KEY": os.getenv("GOOGLE_API_KEY", ""),
+    "GOOGLE_API_URL": os.getenv("GOOGLE_API_URL", "https://generativelanguage.googleapis.com/v1beta"),
+    "GOOGLE_MODEL": os.getenv("GOOGLE_MODEL", "gemma-4-26b-a4b-it"),
     "DEDALUS_API_KEY": DEDALUS_API_KEY,
 }
 
@@ -346,9 +346,9 @@ def deploy_agent(client: Dedalus, machine_id: str = None):
     # Write .env for agent
     agent_env = {
         "CONVEX_URL": ENV_VARS["CONVEX_URL"],
-        "K2_API_KEY": ENV_VARS["K2_API_KEY"],
-        "K2_API_URL": ENV_VARS["K2_API_URL"],
-        "K2_MODEL": ENV_VARS["K2_MODEL"],
+        "GOOGLE_API_KEY": ENV_VARS["GOOGLE_API_KEY"],
+        "GOOGLE_API_URL": ENV_VARS["GOOGLE_API_URL"],
+        "GOOGLE_MODEL": ENV_VARS["GOOGLE_MODEL"],
     }
     write_env_file(client, machine_id, AGENT_DIR, agent_env)
 

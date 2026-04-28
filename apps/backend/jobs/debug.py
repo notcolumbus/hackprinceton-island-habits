@@ -1,8 +1,8 @@
 """Debug endpoints to verify pipeline tier-by-tier.
 
 Use these from a browser / curl to isolate which layer is broken:
-- /jobs/test-k2        → only hit K2, skip DB + Photon
-- /jobs/test-photon    → only hit Photon, skip K2
+- /jobs/test-k2        → only hit Gemini, skip DB + Photon
+- /jobs/test-photon    → only hit Photon, skip Gemini
 - /jobs/test-pipeline  → full flow end-to-end, short-circuited to 1 target
 """
 
@@ -23,10 +23,10 @@ DEMO_PERSONALITY = {
 
 @jobs_bp.post("/test-k2")
 def test_k2():
-    """Call K2 with hard-coded input. Returns the raw message.
+    """Call Gemini with hard-coded input. Returns the raw message.
 
     Usage: curl -X POST <backend>/jobs/test-k2
-    If K2 credentials are wrong, this fails loudly (not silently swallowed).
+    If Gemini credentials are wrong, this fails loudly (not silently swallowed).
     """
     try:
         message, reasoning = generate_morning_reminder(
@@ -47,7 +47,7 @@ def test_k2():
 
 @jobs_bp.post("/test-photon")
 def test_photon():
-    """Send a fixed message to a phone. Bypasses K2.
+    """Send a fixed message to a phone. Bypasses Gemini.
 
     Usage:
       curl -X POST -H 'Content-Type: application/json' \
@@ -73,7 +73,7 @@ def test_photon():
 
 @jobs_bp.post("/test-pipeline")
 def test_pipeline():
-    """End-to-end: first member found → K2 call → Photon send. Use for demo.
+    """End-to-end: first member found → Gemini call → Photon send. Use for demo.
 
     Usage: curl -X POST <backend>/jobs/test-pipeline
     """
@@ -94,7 +94,7 @@ def test_pipeline():
             miss_streak=0,
             team_recap="",
         )
-        print(f"[test-pipeline] K2 → {message[:80]}")
+        print(f"[test-pipeline] Gemini → {message[:80]}")
 
         send_message(phone, message)
         return jsonify({

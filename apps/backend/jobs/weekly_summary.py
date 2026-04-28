@@ -32,7 +32,7 @@ def weekly_summary():
                 print(f"[weekly-summary] island {island['_id']} has no phones — skip")
                 continue
 
-            # Pull members with displayNames so K2 can name-check real people
+            # Pull members with displayNames so Gemini can name-check real people
             # instead of phone numbers.
             details = db.query(
                 "islands:getIslandDetails",
@@ -55,7 +55,7 @@ def weekly_summary():
 
             stats = _aggregate_stats(events, island)
 
-            # Build per-user breakdown that K2 can reference by name.
+            # Build per-user breakdown that Gemini can reference by name.
             per_user = []
             all_phones = set(stats["user_checkins"].keys()) | set(stats["user_misses"].keys())
             for phone in all_phones:
@@ -70,7 +70,7 @@ def weekly_summary():
             top_misser_name = name_by_phone.get(stats["top_misser"]) if stats["top_misser"] else None
 
             print(
-                f"[weekly-summary] K2 call for island {island['_id']} "
+                f"[weekly-summary] Gemini call for island {island['_id']} "
                 f"(checkins={stats['total_checkins']}, misses={stats['total_misses']}, "
                 f"members={len(per_user)})"
             )
@@ -83,7 +83,7 @@ def weekly_summary():
                 completion_rate=stats["completion_rate"],
                 top_misser=top_misser_name,
             )
-            print(f"[weekly-summary] K2 → {narrative[:120]}")
+            print(f"[weekly-summary] Gemini → {narrative[:120]}")
 
             log_stats = {**stats}
             if reasoning:
