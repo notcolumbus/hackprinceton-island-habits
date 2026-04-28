@@ -8,6 +8,7 @@ import requests
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 GOOGLE_MODEL = os.environ.get("GOOGLE_MODEL", "gemma-4-26b-a4b-it")
 GOOGLE_API_URL = os.environ.get("GOOGLE_API_URL", "https://generativelanguage.googleapis.com/v1beta")
+GOOGLE_THINKING_BUDGET = os.environ.get("GOOGLE_THINKING_BUDGET", "0")
 
 
 def _strip_json_fences(raw: str) -> str:
@@ -22,13 +23,18 @@ def _extract_text_from_generate_content(resp_json: dict) -> str:
     parts = content.get("parts") or []
     if not parts:
         return ""
+    visible_chunks: list[str] = []
     for part in parts:
         if part.get("thought") is True:
             continue
         text = part.get("text")
         if text:
-            return str(text).strip()
-    for part in reversed(parts):
+            visible_chunks.append(str(text))
+    if visible_chunks:
+        return "".join(visible_chunks).strip()
+    # Fallback: if provider only returned thought-tagged text, return it
+    # instead of empty output.
+    for part in parts:
         text = part.get("text")
         if text:
             return str(text).strip()
@@ -70,6 +76,12 @@ def _call_gemma_raw(
         "temperature": temperature,
         "maxOutputTokens": max_output_tokens,
     }
+    try:
+        thinking_budget = int(GOOGLE_THINKING_BUDGET)
+        if thinking_budget >= 0:
+            generation_config["thinkingConfig"] = {"thinkingBudget": thinking_budget}
+    except ValueError:
+        pass
     if response_mime_type:
         generation_config["responseMimeType"] = response_mime_type
 
@@ -83,6 +95,21 @@ def _call_gemma_raw(
         json=payload,
         timeout=timeout,
     )
+    if response.status_code == 400 and "thinkingConfig" in generation_config:
+        # Some legacy models do not support thinkingConfig. Retry once
+        # without it so model switching never bricks generation.
+        retry_payload = {
+            "contents": payload["contents"],
+            "generationConfig": {
+                k: v for k, v in generation_config.items() if k != "thinkingConfig"
+            },
+        }
+        response = requests.post(
+            url,
+            headers={"Content-Type": "application/json"},
+            json=retry_payload,
+            timeout=timeout,
+        )
     response.raise_for_status()
     return _extract_text_from_generate_content(response.json())
 
