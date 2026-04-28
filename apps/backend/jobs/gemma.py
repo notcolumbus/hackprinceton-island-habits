@@ -6,7 +6,7 @@ from typing import Any, Optional, Tuple
 import requests
 
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
-GOOGLE_MODEL = os.environ.get("GOOGLE_MODEL", "gemma-4-26b-a4b-it")
+GOOGLE_MODEL = os.environ.get("GOOGLE_MODEL", "gemini-3-flash-preview")
 GOOGLE_API_URL = os.environ.get("GOOGLE_API_URL", "https://generativelanguage.googleapis.com/v1beta")
 GOOGLE_THINKING_BUDGET = os.environ.get("GOOGLE_THINKING_BUDGET", "0")
 

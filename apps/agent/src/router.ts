@@ -26,7 +26,7 @@ const KNOT_SYNC_COOLDOWN_MS = 10 * 60 * 1000;
 const KNOT_SYNC_TIMEOUT_MS = 6_000;
 const KNOT_SYNC_FAIL_BACKOFF_MS = 60_000;
 const CHAT_CONTEXT_TIMEOUT_MS = 2_500;
-const CHAT_REPLY_TIMEOUT_MS = 3_500;
+const CHAT_REPLY_TIMEOUT_MS = 8_000;
 const TRANSACTION_HINT_RE = /\b(transaction|transactions|purchase|purchases|spent|spend|spending|charge|charges|charged|merchant|merchants|payment|payments|receipt|receipts|doordash|uber\s?eats|order|orders|knot)\b/i;
 const knotSyncInFlightByIsland = new Set<string>();
 const knotSyncLastAtByIsland = new Map<string, number>();
@@ -309,29 +309,40 @@ export const HELP_TEXT =
 // ── Handlers ──────────────────────────────────────────────────────────
 
 export async function handleStart(space: any, message: any): Promise<void> {
-  try {
-    const participants = collectParticipants(space, message);
-    if (!participants.length) {
-      await space.send(text("Couldn't detect group members. Start this in a group iMessage with phone numbers or iCloud emails."));
-      return;
-    }
+  const participants = collectParticipants(space, message);
+  if (!participants.length) {
+    await space.send(text("Couldn't detect group members. Start this in a group iMessage with phone numbers or iCloud emails."));
+    return;
+  }
 
+  let code: string;
+  let islandId: string;
+  try {
     const result: any = await convex.mutation("islands:createIsland" as any, { phoneNumbers: participants });
-    const code = result.code as string;
+    code = result.code as string;
+    islandId = result.islandId as string;
+  } catch (err: any) {
+    console.error("[/start] createIsland failed:", err?.message ?? err);
+    await sendThreadSafe(space, message, "Failed to create island. Try /start again.");
+    return;
+  }
+
+  try {
     await convex.mutation("groupRooms:bindSpaceToIsland" as any, {
       spaceId: space.id,
-      islandId: result.islandId,
+      islandId,
       code,
       participants,
     });
-    const confirmation = `Island Habits started.\n\nRoom Code: ${code}\nJoin: ${APP_BASE_URL}/dashboard?code=${code}`;
-    const method = await sendThreadSafe(space, message, confirmation);
-    console.log(`[/start] confirmation sent via ${method} space=${space.id}`);
-    console.log(`[/start] code=${code} participants=${participants.join(",")}`);
   } catch (err: any) {
-    console.error("[/start] failed:", err?.message ?? err);
-    await sendThreadSafe(space, message, "Failed to create room code. Try /start again.");
+    console.warn("[/start] bindSpaceToIsland failed (island created, continuing):", err?.message ?? err);
   }
+
+  const confirmation = `Island Habits started.\n\nRoom Code: ${code}\nJoin: ${APP_BASE_URL}/dashboard?code=${code}`;
+  const method = await sendThreadSafe(space, message, confirmation);
+  console.log(`[/start] confirmation sent via ${method} space=${space.id}`);
+  console.log(`[/start] code=${code} participants=${participants.join(",")}`);
+
 }
 
 export async function handleGoals(space: any, sender: string, spaceId?: string): Promise<void> {
@@ -732,20 +743,8 @@ export async function handleChat(
     reply = fallbackReply;
   }
 
-  const isGroup = spaceId.includes(";+;");
-  if (isGroup && message && typeof message.reply === "function") {
-    try {
-      await message.reply(text(reply));
-      console.log(`[chat] sent via reply space=${spaceId} text=${JSON.stringify(reply.slice(0, 120))}`);
-    } catch (err: any) {
-      console.warn("[chat] message.reply failed; falling back to space.send:", err?.message ?? err);
-      await space.send(text(reply));
-      console.log(`[chat] sent via space fallback space=${spaceId} text=${JSON.stringify(reply.slice(0, 120))}`);
-    }
-  } else {
-    await space.send(text(reply));
-    console.log(`[chat] sent via space space=${spaceId} text=${JSON.stringify(reply.slice(0, 120))}`);
-  }
+  const sendMethod = await sendThreadSafe(space, message, reply);
+  console.log(`[chat] sent via ${sendMethod} space=${spaceId} text=${JSON.stringify(reply.slice(0, 120))}`);
   appendMessage(spaceId, "agent", reply);
 }
 
