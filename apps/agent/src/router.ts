@@ -140,7 +140,9 @@ export function toE164Like(value: unknown): string | null {
 export function toEmailLike(value: unknown): string | null {
   if (!value || typeof value !== "string") return null;
   const trimmed = value.trim().toLowerCase();
-  if (/^[^\s@]+@(icloud\.com|me\.com|apple\.com|mail\.com|gmail\.com)$/.test(trimmed)) {
+  // Accept any valid-looking email so iMessage Apple IDs from other domains
+  // aren't dropped in group chats.
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
     return trimmed;
   }
   return null;

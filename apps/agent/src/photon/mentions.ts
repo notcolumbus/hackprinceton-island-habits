@@ -1,9 +1,12 @@
 export const AGENT_NAME = "isla";
 
-const NAME_PATTERN = new RegExp(`(?:^|[^a-z])@?${AGENT_NAME}\\b`, "i");
-
 export function isTagged(text: string): boolean {
-  return NAME_PATTERN.test(text);
+  const normalized = (text ?? "").normalize("NFKC").toLowerCase();
+  if (!normalized) return false;
+  // Tokenize by non-alphanumeric separators so punctuation/emoji/quotes
+  // around the mention do not break detection.
+  const tokens = normalized.split(/[^a-z0-9@]+/g).filter(Boolean);
+  return tokens.some((token) => token === AGENT_NAME || token === `@${AGENT_NAME}`);
 }
 
 export function isStartCommand(text: string): boolean {
