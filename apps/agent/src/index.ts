@@ -93,10 +93,6 @@ async function main(): Promise<void> {
     appendMessage(space.id, senderLabel, body);
 
     if (cmd.kind === "none") {
-      if (!resolvedSender) {
-        console.log(`└─ (no command matched, no sender — ignored)`);
-        continue;
-      }
       if (!body.trim()) {
         console.log(`└─ (empty body — tapback or system message, skipped)`);
         continue;
@@ -108,11 +104,15 @@ async function main(): Promise<void> {
         console.log(`└─ (no "isla" mention — skipped)`);
         continue;
       }
+      const chatSender = resolvedSender ?? `unknown:${message.sender.id}`;
+      if (!resolvedSender) {
+        console.warn(`└─ (sender unresolved for chat; using ${chatSender})`);
+      }
       try {
-        await handleChat(space, resolvedSender, body, space.id);
-        console.log(`└─ 💬 chat reply for ${senderLabel}`);
+        await handleChat(space, chatSender, body, space.id);
+        console.log(`└─ 💬 chat reply for ${chatSender}`);
       } catch (err: any) {
-        console.error(`└─ ❌ chat reply for ${senderLabel} failed: ${err?.message ?? err}`);
+        console.error(`└─ ❌ chat reply for ${chatSender} failed: ${err?.message ?? err}`);
       }
       continue;
     }

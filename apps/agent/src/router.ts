@@ -25,6 +25,8 @@ export const BOT_PHONE = (process.env.BOT_PHONE ?? "+14155952874").replace(/\D/g
 const KNOT_SYNC_COOLDOWN_MS = 10 * 60 * 1000;
 const KNOT_SYNC_TIMEOUT_MS = 6_000;
 const KNOT_SYNC_FAIL_BACKOFF_MS = 60_000;
+const CHAT_CONTEXT_TIMEOUT_MS = 2_500;
+const CHAT_REPLY_TIMEOUT_MS = 7_500;
 const TRANSACTION_HINT_RE = /\b(transaction|transactions|purchase|purchases|spent|spend|spending|charge|charges|charged|merchant|merchants|payment|payments|receipt|receipts|doordash|uber\s?eats|order|orders|knot)\b/i;
 const knotSyncInFlightByIsland = new Set<string>();
 const knotSyncLastAtByIsland = new Map<string, number>();
@@ -99,6 +101,21 @@ async function syncKnotTransactionsForIslandSafely(islandId: string, reason: str
     clearTimeout(timeout);
     knotSyncInFlightByIsland.delete(islandId);
   }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`timeout after ${timeoutMs}ms`)), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
 }
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -629,17 +646,18 @@ export async function handleChat(space: any, sender: string, body: string, space
 
   if (island) {
     if (messageLooksTransactionRelated(body)) {
-      await syncKnotTransactionsForIslandSafely(island._id, "chat-transaction-intent");
+      // Don't block chat replies on transaction sync; refresh in background.
+      void syncKnotTransactionsForIslandSafely(island._id, "chat-transaction-intent");
     }
     try {
-      const [goals, details, knotContext] = await Promise.all([
+      const [goals, details, knotContext] = await withTimeout(Promise.all([
         fetchGoals(island._id, sender),
         convex.query("islands:getIslandDetails" as any, { islandId: island._id }),
         convex.query("knot:getTransactionContextForParticipant" as any, {
           participantId: sender,
           limit: 5,
         }),
-      ]);
+      ]), CHAT_CONTEXT_TIMEOUT_MS);
       const member = (details?.members ?? []).find((m: any) => m.phoneNumber === sender);
       if (member?.displayName) playerName = member.displayName.split(/\s+/)[0];
       const goalLines = goals.length
@@ -653,7 +671,7 @@ export async function handleChat(space: any, sender: string, body: string, space
         `Sender goals:\n${goalLines}\n` +
         `Recent transactions:\n${txLines}`;
     } catch (err: any) {
-      console.error("[chat] failed to load context:", err?.message ?? err);
+      console.warn("[chat] context load degraded:", err?.message ?? err);
     }
   }
 
@@ -664,10 +682,13 @@ export async function handleChat(space: any, sender: string, body: string, space
     `Try /goals or /status if you want a quick update.`;
 
   let reply = "";
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CHAT_REPLY_TIMEOUT_MS);
   try {
     const res = await fetch(`${BACKEND_URL}/jobs/chat-reply`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
       body: JSON.stringify({
         player_name: playerName,
         island_context: contextStr,
@@ -681,6 +702,8 @@ export async function handleChat(space: any, sender: string, body: string, space
   } catch (err: any) {
     console.error("[chat] chat-reply failed:", err?.message ?? err);
     reply = fallbackReply;
+  } finally {
+    clearTimeout(timeout);
   }
 
   if (!reply || reply.toUpperCase() === "SKIP") {
