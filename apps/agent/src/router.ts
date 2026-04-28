@@ -656,6 +656,10 @@ export async function handleChat(space: any, sender: string, body: string, space
   }
 
   const history = getHistory(spaceId).slice(0, -1);
+  const firstName = (playerName || sender || "friend").toString().trim().split(/\s+/)[0] || "friend";
+  const fallbackReply =
+    `I hear you, ${firstName}. I'm still here with you on the island. ` +
+    `Try /goals or /status if you want a quick update.`;
 
   let reply = "";
   try {
@@ -674,10 +678,13 @@ export async function handleChat(space: any, sender: string, body: string, space
     reply = (data.message ?? "").trim();
   } catch (err: any) {
     console.error("[chat] chat-reply failed:", err?.message ?? err);
-    return;
+    reply = fallbackReply;
   }
 
-  if (!reply || reply.toUpperCase() === "SKIP") return;
+  if (!reply || reply.toUpperCase() === "SKIP") {
+    console.warn(`[chat] backend returned ${reply ? "SKIP" : "empty"}; using fallback`);
+    reply = fallbackReply;
+  }
 
   await space.send(text(reply));
   appendMessage(spaceId, "agent", reply);
