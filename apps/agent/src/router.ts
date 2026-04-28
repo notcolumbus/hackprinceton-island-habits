@@ -44,6 +44,19 @@ export function assertEnv(): void {
 
 export const convex = new ConvexHttpClient(CONVEX_URL);
 
+async function sendThreadSafe(space: any, message: any, body: string): Promise<"reply" | "space"> {
+  if (message && typeof message.reply === "function") {
+    try {
+      await message.reply(text(body));
+      return "reply";
+    } catch (err: any) {
+      console.warn("[send] message.reply failed, falling back to space.send:", err?.message ?? err);
+    }
+  }
+  await space.send(text(body));
+  return "space";
+}
+
 function messageLooksTransactionRelated(body: string): boolean {
   const normalized = body.trim().toLowerCase();
   if (!normalized) return false;
@@ -311,11 +324,13 @@ export async function handleStart(space: any, message: any): Promise<void> {
       code,
       participants,
     });
-    await space.send(text(`Island Habits started.\n\nRoom Code: ${code}\nJoin: ${APP_BASE_URL}/dashboard?code=${code}`));
+    const confirmation = `Island Habits started.\n\nRoom Code: ${code}\nJoin: ${APP_BASE_URL}/dashboard?code=${code}`;
+    const method = await sendThreadSafe(space, message, confirmation);
+    console.log(`[/start] confirmation sent via ${method} space=${space.id}`);
     console.log(`[/start] code=${code} participants=${participants.join(",")}`);
   } catch (err: any) {
     console.error("[/start] failed:", err?.message ?? err);
-    await space.send(text("Failed to create room code. Try /start again."));
+    await sendThreadSafe(space, message, "Failed to create room code. Try /start again.");
   }
 }
 
@@ -721,12 +736,15 @@ export async function handleChat(
   if (isGroup && message && typeof message.reply === "function") {
     try {
       await message.reply(text(reply));
+      console.log(`[chat] sent via reply space=${spaceId} text=${JSON.stringify(reply.slice(0, 120))}`);
     } catch (err: any) {
       console.warn("[chat] message.reply failed; falling back to space.send:", err?.message ?? err);
       await space.send(text(reply));
+      console.log(`[chat] sent via space fallback space=${spaceId} text=${JSON.stringify(reply.slice(0, 120))}`);
     }
   } else {
     await space.send(text(reply));
+    console.log(`[chat] sent via space space=${spaceId} text=${JSON.stringify(reply.slice(0, 120))}`);
   }
   appendMessage(spaceId, "agent", reply);
 }
