@@ -26,7 +26,7 @@ const KNOT_SYNC_COOLDOWN_MS = 10 * 60 * 1000;
 const KNOT_SYNC_TIMEOUT_MS = 6_000;
 const KNOT_SYNC_FAIL_BACKOFF_MS = 60_000;
 const CHAT_CONTEXT_TIMEOUT_MS = 2_500;
-const CHAT_REPLY_TIMEOUT_MS = 7_500;
+const CHAT_REPLY_TIMEOUT_MS = 3_500;
 const TRANSACTION_HINT_RE = /\b(transaction|transactions|purchase|purchases|spent|spend|spending|charge|charges|charged|merchant|merchants|payment|payments|receipt|receipts|doordash|uber\s?eats|order|orders|knot)\b/i;
 const knotSyncInFlightByIsland = new Set<string>();
 const knotSyncLastAtByIsland = new Map<string, number>();
@@ -639,7 +639,13 @@ export async function handleUndo(space: any, sender: string, index: number, spac
   }
 }
 
-export async function handleChat(space: any, sender: string, body: string, spaceId: string): Promise<void> {
+export async function handleChat(
+  space: any,
+  sender: string,
+  body: string,
+  spaceId: string,
+  message?: any,
+): Promise<void> {
   const island = await resolveSenderIsland(sender, spaceId);
   let contextStr = "No island linked yet.";
   let playerName = sender;
@@ -711,7 +717,17 @@ export async function handleChat(space: any, sender: string, body: string, space
     reply = fallbackReply;
   }
 
-  await space.send(text(reply));
+  const isGroup = spaceId.includes(";+;");
+  if (isGroup && message && typeof message.reply === "function") {
+    try {
+      await message.reply(text(reply));
+    } catch (err: any) {
+      console.warn("[chat] message.reply failed; falling back to space.send:", err?.message ?? err);
+      await space.send(text(reply));
+    }
+  } else {
+    await space.send(text(reply));
+  }
   appendMessage(spaceId, "agent", reply);
 }
 

@@ -109,7 +109,7 @@ async function main(): Promise<void> {
         console.warn(`└─ (sender unresolved for chat; using ${chatSender})`);
       }
       try {
-        await handleChat(space, chatSender, body, space.id);
+        await handleChat(space, chatSender, body, space.id, message);
         console.log(`└─ 💬 chat reply for ${chatSender}`);
       } catch (err: any) {
         console.error(`└─ ❌ chat reply for ${chatSender} failed: ${err?.message ?? err}`);
