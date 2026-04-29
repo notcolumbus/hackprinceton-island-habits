@@ -11,7 +11,7 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { useGame, GameCtx, ISLAND_TIERS } from "../state";
+import { useGame, ISLAND_TIERS } from "../state";
 import type { Agent } from "../state";
 import { Building3D } from "./Building3D";
 import { Agent3D } from "./Agent3D";
@@ -883,12 +883,13 @@ const Scene = ({
 
 /* ── Canvas wrapper ──────────────────────────────────── */
 export const Island3D = () => {
-  const game = useContext(GameCtx);
-  const trackAgent = game?.trackAgent ?? false;
-  const timeOffsetMs = game?.timeOffsetMs ?? 0;
+  const { trackAgent, timeOffsetMs, islandId } = useGame(useShallow(s => ({
+    trackAgent: s.trackAgent,
+    timeOffsetMs: s.timeOffsetMs,
+    islandId: s.islandId
+  })));
   const agentTrackPos = useRef(new THREE.Vector3());
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
-  const islandId = game?.islandId ?? null;
   const saveConversationMut = useMutation(api.gossip.saveConversation);
   const saveConversation = useCallback<SaveConversationFn>(
     (agentAPhone, agentBPhone, lines, reasoning) => {
@@ -918,24 +919,22 @@ export const Island3D = () => {
         dpr={[1, 1.5]}
         style={{ width: "100%", height: "100%" }}
       >
-        <GameCtx.Provider value={game}>
-          <Scene agentTrackPos={agentTrackPos} saveConversation={saveConversation} />
-          <CameraTracker tracking={trackAgent} agentPos={agentTrackPos} controlsRef={controlsRef} />
-          <OrbitControls
-            ref={controlsRef}
-            enablePan={false}
-            enableRotate
-            minDistance={4}
-            maxDistance={55}
-            minPolarAngle={Math.PI / 6}
-            maxPolarAngle={Math.PI / 2.3}
-            target={[0, 0.5, 0]}
-            autoRotate={false}
-            enableDamping
-            dampingFactor={0.05}
-            zoomSpeed={2.2}
-          />
-        </GameCtx.Provider>
+        <Scene agentTrackPos={agentTrackPos} saveConversation={saveConversation} />
+        <CameraTracker tracking={trackAgent} agentPos={agentTrackPos} controlsRef={controlsRef} />
+        <OrbitControls
+          ref={controlsRef}
+          enablePan={false}
+          enableRotate
+          minDistance={4}
+          maxDistance={55}
+          minPolarAngle={Math.PI / 6}
+          maxPolarAngle={Math.PI / 2.3}
+          target={[0, 0.5, 0]}
+          autoRotate={false}
+          enableDamping
+          dampingFactor={0.05}
+          zoomSpeed={2.2}
+        />
       </Canvas>
     </div>
   );

@@ -6,9 +6,9 @@ import * as THREE from "three";
 import type { Building } from "../state";
 import { useGame } from "../state";
 
-import {
 import { useShallow } from "zustand/react/shallow";
 
+import {
   House, Garden, Library, Gym, Fountain, Bonfire, Lighthouse, Cabin, Dock, Shrine,
   Windmill, Treehouse, Bakery, TeaHouse, Observatory, BellTower, ZenGarden,
   CrystalGrotto, Amphitheater, Moongate

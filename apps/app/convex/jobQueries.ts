@@ -409,6 +409,8 @@ export const islandsReadyForWeeklySummary = query({
       island: Doc<"islands">;
       phones: string[];
       events: Doc<"events">[];
+      agents: Doc<"agents">[];
+      memberDetails: { phoneNumber: string; displayName: string }[];
     }[] = [];
 
     for (const island of islands) {

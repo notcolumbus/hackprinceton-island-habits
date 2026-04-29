@@ -244,7 +244,7 @@ export const GrassTufts = ({ tufts }: { tufts: [number, number][] }) => {
                 const a = i * 1.2 + seededRandom(s);
                 const lean = (seededRandom(s + 50) - 0.5) * 0.3;
                 const h = 0.1 + seededRandom(s + 100) * 0.04;
-                const color = new THREE.Color(\`hsl(\${115 + seededRandom(s + 200) * 20}, \${40 + seededRandom(s + 300) * 15}%, \${38 + seededRandom(s + 400) * 12}%)\`);
+                const color = new THREE.Color(`hsl(${115 + seededRandom(s + 200) * 20}, ${40 + seededRandom(s + 300) * 15}%, ${38 + seededRandom(s + 400) * 12}%)`);
                 return (
                   <Instance
                     key={i}
