@@ -1,5 +1,5 @@
 {
-  "buildCommand": "turbo run build --filter=@hackprinceton/app",
+  "buildCommand": "cd apps/app && npm run build",
   "outputDirectory": "apps/app/dist",
   "installCommand": "npm install"
 }
