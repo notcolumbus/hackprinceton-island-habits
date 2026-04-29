@@ -3,8 +3,10 @@ import { Check, ChevronRight, Scroll } from "lucide-react";
 import { useGame } from "@/game/state";
 import { useIsMobile } from "@/hooks/use-mobile";
 
+import { useShallow } from "zustand/react/shallow";
+
 export const QuestLog = () => {
-  const { goals, setScreen, completeGoal, groupMotivation, buildings, trackAgent, setTrackAgent, viewingEra } = useGame();
+  const { goals, setScreen, completeGoal, groupMotivation, buildings, trackAgent, setTrackAgent, viewingEra  } = useGame(useShallow(s => ({ goals: s.goals, setScreen: s.setScreen, completeGoal: s.completeGoal, groupMotivation: s.groupMotivation, buildings: s.buildings, trackAgent: s.trackAgent, setTrackAgent: s.setTrackAgent, viewingEra: s.viewingEra })));
   const isMobile = useIsMobile();
   const doneCount = goals.filter((g) => g.done).length;
   const [sheetOpen, setSheetOpen] = useState(false);

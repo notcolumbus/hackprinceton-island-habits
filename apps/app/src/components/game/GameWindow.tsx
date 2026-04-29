@@ -14,8 +14,10 @@ import { MobilePlacingHUD } from "./MobilePlacingHUD";
 import { DevPanel } from "./DevPanel";
 import { useGame } from "@/game/state";
 
+import { useShallow } from "zustand/react/shallow";
+
 const TrackAgentButton = () => {
-  const { trackAgent, setTrackAgent, viewingEra, setScreen } = useGame();
+  const { trackAgent, setTrackAgent, viewingEra, setScreen  } = useGame(useShallow(s => ({ trackAgent: s.trackAgent, setTrackAgent: s.setTrackAgent, viewingEra: s.viewingEra, setScreen: s.setScreen })));
   if (viewingEra !== null) return null;
   // On mobile these buttons live in QuestLog's floating row instead.
   return (
@@ -42,7 +44,7 @@ const TrackAgentButton = () => {
 };
 
 const VisitBanner = () => {
-  const { viewingEra, visitIsland, islandHistory } = useGame();
+  const { viewingEra, visitIsland, islandHistory  } = useGame(useShallow(s => ({ viewingEra: s.viewingEra, visitIsland: s.visitIsland, islandHistory: s.islandHistory })));
   if (viewingEra === null) return null;
   const snap = islandHistory[viewingEra];
   if (!snap) return null;
@@ -67,7 +69,7 @@ const VisitBanner = () => {
 };
 
 const TransitionOverlay = () => {
-  const { isTransitioning } = useGame();
+  const { isTransitioning  } = useGame(useShallow(s => ({ isTransitioning: s.isTransitioning })));
   if (!isTransitioning) return null;
   return (
     <div className="absolute inset-0 z-[150] pointer-events-none flex items-center justify-center animate-in fade-in duration-700"
@@ -81,7 +83,7 @@ const TransitionOverlay = () => {
 };
 
 const VisitTransitionOverlay = () => {
-  const { isVisiting, viewingEra, islandHistory } = useGame();
+  const { isVisiting, viewingEra, islandHistory  } = useGame(useShallow(s => ({ isVisiting: s.isVisiting, viewingEra: s.viewingEra, islandHistory: s.islandHistory })));
   if (!isVisiting) return null;
   // figure out where we're going — if viewingEra is still set we're returning home, otherwise arriving
   const snap = viewingEra !== null ? islandHistory[viewingEra] : null;

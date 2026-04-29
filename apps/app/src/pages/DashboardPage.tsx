@@ -3,6 +3,7 @@ import { useConvex, useMutation, useQuery } from 'convex/react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
 import { Canvas } from '@react-three/fiber'
+import { View, PerspectiveCamera } from '@react-three/drei'
 import type { Doc, Id } from '../../convex/_generated/dataModel'
 import { api } from '../../convex/_generated/api'
 import { usePhoneNumber } from '../hooks/usePhoneNumber'
@@ -366,13 +367,8 @@ const MiniIslandPreview = ({
       background: 'linear-gradient(180deg, #ecd3b2 0%, #b7e2e9 22%, #9fd6e2 100%)',
       boxShadow: 'inset 0 -26px 38px -30px rgba(36,80,108,0.46)',
     }}>
-      <Canvas
-        dpr={[1, 1.5]}
-        frameloop="demand"
-        style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
-        gl={{ antialias: true, alpha: true, powerPreference: 'low-power' }}
-        camera={{ position: [7.2, 5.0, 7.0], fov: 34 }}
-      >
+      <View style={{ width: '100%', height: '100%', pointerEvents: 'none' }}>
+        <PerspectiveCamera makeDefault position={[7.2, 5.0, 7.0]} fov={34} />
         <color attach="background" args={['#a9dce5']} />
         <ambientLight intensity={0.9} />
         <directionalLight position={[5, 8, 4]} intensity={1.1} color="#fff1dc" />
@@ -406,7 +402,7 @@ const MiniIslandPreview = ({
             <MiniAgent3D key={agent.id} agent={agent} />
           ))}
         </group>
-      </Canvas>
+      </View>
       <div style={{
         position: 'absolute',
         top: '8px',
@@ -767,6 +763,16 @@ export function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* ══ Global WebGL Context for all island previews ══ */}
+      <Canvas
+        style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', pointerEvents: 'none', zIndex: 100 }}
+        gl={{ antialias: true, alpha: true, powerPreference: 'low-power' }}
+        dpr={[1, 1.5]}
+        frameloop="demand"
+      >
+        <View.Port />
+      </Canvas>
     </main>
   )
 }

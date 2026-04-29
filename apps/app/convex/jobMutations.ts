@@ -100,39 +100,134 @@ export const advanceBuildProgress = mutation({
   },
 });
 
-export const recordWeeklySummary = mutation({
+export const recordWeeklySummariesBatch = mutation({
   args: {
-    islandId: v.id("islands"),
-    agentId: v.optional(v.id("agents")),
-    content: v.string(),
-    stats: v.any(),
+    summaries: v.array(v.object({
+      islandId: v.id("islands"),
+      agentId: v.optional(v.id("agents")),
+      content: v.string(),
+      stats: v.any(),
+    }))
   },
-  handler: async (ctx, { islandId, agentId, content, stats }) => {
-    await ctx.db.insert("events", {
-      islandId,
-      type: "weekly_summary",
-      payload: { content, stats },
-      timestamp: Date.now(),
-    });
-    if (agentId) {
-      await ctx.db.insert("aiMessages", {
-        agentId,
-        channel: "imessage_group",
-        content,
-        // Keep islandId in context so per-island digest queries can filter
-        // without an extra index.
-        context: { ...(stats ?? {}), islandId },
-        sentAt: Date.now(),
+  handler: async (ctx, { summaries }) => {
+    for (const summary of summaries) {
+      const { islandId, agentId, content, stats } = summary;
+      await ctx.db.insert("events", {
+        islandId,
+        type: "weekly_summary",
+        payload: { content, stats },
+        timestamp: Date.now(),
       });
-    }
+      if (agentId) {
+        await ctx.db.insert("aiMessages", {
+          agentId,
+          channel: "imessage_group",
+          content,
+          context: { ...(stats ?? {}), islandId },
+          sentAt: Date.now(),
+        });
+      }
 
-    // Mark this week as handled so islandsReadyForWeeklySummary skips it
-    // until the next multiple-of-7 boundary.
-    const island = await ctx.db.get(islandId);
-    if (island) {
-      await ctx.db.patch(islandId, {
-        lastWeeklySummaryDayCount: island.dayCount ?? 0,
-      });
+      const island = await ctx.db.get(islandId);
+      if (island) {
+        await ctx.db.patch(islandId, {
+          lastWeeklySummaryDayCount: island.dayCount ?? 0,
+        });
+      }
     }
   },
+});
+
+export const processEndOfDayMissesBatch = mutation({
+  args: {
+    misses: v.array(
+      v.object({
+        goalId: v.id("goals"),
+        phoneNumber: v.string(),
+        islandId: v.id("islands"),
+        agentId: v.id("agents"),
+        penalty: v.number(),
+        date: v.string(),
+      })
+    ),
+  },
+  handler: async (ctx, { misses }) => {
+    const crossedThreshold = [];
+
+    for (const m of misses) {
+      // Check if already missed
+      const startOfDay = new Date(m.date + "T00:00:00Z").getTime();
+      const events = await ctx.db
+        .query("events")
+        .withIndex("by_island", (q) => q.eq("islandId", m.islandId))
+        .filter((q) =>
+          q.and(
+            q.eq(q.field("type"), "miss"),
+            q.gte(q.field("timestamp"), startOfDay),
+            q.lt(q.field("timestamp"), startOfDay + 86400000)
+          )
+        )
+        .collect();
+      const alreadyMissed = events.some(
+        (e) => e.payload && (e.payload as { goalId: string }).goalId === m.goalId
+      );
+      if (alreadyMissed) continue;
+
+      // Insert checkIn and event
+      await ctx.db.insert("checkIns", {
+        goalId: m.goalId,
+        phoneNumber: m.phoneNumber,
+        islandId: m.islandId,
+        date: m.date,
+        completed: false,
+        createdAt: Date.now(),
+      });
+      await ctx.db.insert("events", {
+        islandId: m.islandId,
+        type: "miss",
+        payload: { goalId: m.goalId, phoneNumber: m.phoneNumber },
+        timestamp: Date.now(),
+      });
+
+      // Damage building
+      const building = await ctx.db
+        .query("buildings")
+        .withIndex("by_island", (q) => q.eq("islandId", m.islandId))
+        .filter((q) =>
+          q.and(
+            q.eq(q.field("state"), "constructing"),
+            q.eq(q.field("placedBy"), m.phoneNumber)
+          )
+        )
+        .first();
+      if (building) {
+        await ctx.db.patch(building._id, { state: "damaged" });
+        await ctx.db.insert("events", {
+          islandId: m.islandId,
+          type: "damage",
+          payload: { buildingId: building._id, phoneNumber: m.phoneNumber },
+          timestamp: Date.now(),
+        });
+      }
+
+      // Motivation logic
+      const agent = await ctx.db.get(m.agentId);
+      if (agent) {
+        const prevMotivation = agent.motivation;
+        const newMotivation = Math.max(0, prevMotivation - m.penalty);
+        await ctx.db.patch(m.agentId, { motivation: newMotivation });
+        
+        if (newMotivation < 30 && prevMotivation >= 30) {
+          crossedThreshold.push({
+            islandId: m.islandId,
+            agentId: m.agentId,
+            phoneNumber: m.phoneNumber,
+            newMotivation,
+            personalityProfile: agent.personalityProfile,
+          });
+        }
+      }
+    }
+    return crossedThreshold;
+  }
 });

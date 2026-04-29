@@ -3,12 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { useGame } from "@/game/state";
 import { useIsMobile } from "@/hooks/use-mobile";
 
+import { useShallow } from "zustand/react/shallow";
+
 const SEASONS = ["Winter", "Spring", "Spring", "Summer", "Summer", "Summer", "Autumn", "Autumn", "Autumn", "Winter", "Winter", "Winter"];
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export const TopBar = () => {
   const navigate = useNavigate();
-  const { logs, rocks, streak, dayCount, level, xp, agents, screen, setScreen, islandName, audioMuted, setAudioMuted } = useGame();
+  const { logs, rocks, streak, dayCount, level, xp, agents, screen, setScreen, islandName, audioMuted, setAudioMuted  } = useGame(useShallow(s => ({ logs: s.logs, rocks: s.rocks, streak: s.streak, dayCount: s.dayCount, level: s.level, xp: s.xp, agents: s.agents, screen: s.screen, setScreen: s.setScreen, islandName: s.islandName, audioMuted: s.audioMuted, setAudioMuted: s.setAudioMuted })));
   const isMobile = useIsMobile();
   const onlineCount = agents.filter((a) => a.online).length;
 

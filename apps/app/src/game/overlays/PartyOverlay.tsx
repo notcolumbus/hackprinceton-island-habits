@@ -4,8 +4,10 @@ import { useGame } from "../state";
 import { useOverlayClose } from "@/hooks/useOverlayClose";
 import { useIsMobile } from "@/hooks/use-mobile";
 
+import { useShallow } from "zustand/react/shallow";
+
 export const PartyOverlay = () => {
-  const { screen, setScreen, agents, islandName } = useGame();
+  const { screen, setScreen, agents, islandName  } = useGame(useShallow(s => ({ screen: s.screen, setScreen: s.setScreen, agents: s.agents, islandName: s.islandName })));
   const isMobile = useIsMobile();
   const { closing, close } = useOverlayClose(() => setScreen(null));
   const panelRef = useRef<HTMLDivElement>(null);

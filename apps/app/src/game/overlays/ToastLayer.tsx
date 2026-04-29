@@ -1,7 +1,9 @@
 import { useGame } from "../state";
 
+import { useShallow } from "zustand/react/shallow";
+
 export const ToastLayer = () => {
-  const { toast } = useGame();
+  const { toast  } = useGame(useShallow(s => ({ toast: s.toast })));
   if (!toast) return null;
   return (
     <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[60] pointer-events-none animate-in fade-in slide-in-from-top duration-200">

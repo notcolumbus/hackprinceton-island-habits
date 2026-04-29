@@ -430,7 +430,19 @@ export const islandsReadyForWeeklySummary = query({
         .filter((q) => q.gte(q.field("timestamp"), since))
         .collect();
 
-      results.push({ island, phones, events });
+      const agents = await ctx.db
+        .query("agents")
+        .withIndex("by_island", (q) => q.eq("islandId", island._id))
+        .collect();
+
+      const memberDetails = await Promise.all(
+        members.map(async (m) => ({
+          phoneNumber: m.phoneNumber,
+          displayName: await lookupDisplayName(ctx, m.phoneNumber),
+        }))
+      );
+
+      results.push({ island, phones, events, agents, memberDetails });
     }
 
     return results;

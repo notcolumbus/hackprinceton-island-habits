@@ -5,8 +5,10 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import { useGame } from "../state";
 import { useOverlayClose } from "@/hooks/useOverlayClose";
 
+import { useShallow } from "zustand/react/shallow";
+
 export const GossipHistoryOverlay = () => {
-  const { screen, setScreen, agents, islandId } = useGame();
+  const { screen, setScreen, agents, islandId  } = useGame(useShallow(s => ({ screen: s.screen, setScreen: s.setScreen, agents: s.agents, islandId: s.islandId })));
   const { closing, close } = useOverlayClose(() => setScreen(null));
 
   const conversations = useQuery(

@@ -3,8 +3,10 @@ import { X, Send, Sparkles } from "lucide-react";
 import { useGame } from "../state";
 import { useOverlayClose } from "@/hooks/useOverlayClose";
 
+import { useShallow } from "zustand/react/shallow";
+
 export const ChatOverlay = () => {
-  const { screen, setScreen, agents, selectedAgent, setSelectedAgent, chats, sendChat } = useGame();
+  const { screen, setScreen, agents, selectedAgent, setSelectedAgent, chats, sendChat  } = useGame(useShallow(s => ({ screen: s.screen, setScreen: s.setScreen, agents: s.agents, selectedAgent: s.selectedAgent, setSelectedAgent: s.setSelectedAgent, chats: s.chats, sendChat: s.sendChat })));
   const { closing, close } = useOverlayClose(() => setScreen(null));
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);

@@ -1,8 +1,10 @@
 import { MessageCircle, Zap } from "lucide-react";
 import { useGame } from "@/game/state";
 
+import { useShallow } from "zustand/react/shallow";
+
 export const AgentDock = () => {
-  const { agents, selectedAgent, setSelectedAgent, setScreen } = useGame();
+  const { agents, selectedAgent, setSelectedAgent, setScreen  } = useGame(useShallow(s => ({ agents: s.agents, selectedAgent: s.selectedAgent, setSelectedAgent: s.setSelectedAgent, setScreen: s.setScreen })));
   const hasAgents = agents.length > 0;
 
   return (

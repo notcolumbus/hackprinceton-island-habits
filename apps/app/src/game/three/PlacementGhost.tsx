@@ -8,11 +8,13 @@ import type { BuildingType } from "../state";
 import { Building3D } from "./Building3D";
 import { useIsMobile } from "@/hooks/use-mobile";
 
+import { useShallow } from "zustand/react/shallow";
+
 // Shared ref so MobilePlacingHUD can read current ghost position for cancel
 export const mobileGhostPosRef = { current: null as [number, number] | null };
 
 export const PlacementGhost = () => {
-  const { placingType, buildings, scenery, islandEra, placeBuildingAt, cancelPlacing } = useGame();
+  const { placingType, buildings, scenery, islandEra, placeBuildingAt, cancelPlacing  } = useGame(useShallow(s => ({ placingType: s.placingType, buildings: s.buildings, scenery: s.scenery, islandEra: s.islandEra, placeBuildingAt: s.placeBuildingAt, cancelPlacing: s.cancelPlacing })));
   const islandRadius = ISLAND_TIERS[islandEra]?.radius ?? 7.0;
   const isMobile = useIsMobile();
   const [pos, setPos] = useState<[number, number] | null>(null);

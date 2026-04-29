@@ -5,6 +5,8 @@ import * as THREE from "three";
 import type { District } from "../state";
 import { useGame, ISLAND_TIERS, DISTRICTS } from "../state";
 
+import { useShallow } from "zustand/react/shallow";
+
 /* ── Bumpy terrain disc using deformed cylinder ─────── */
 const BumpyTerrain = ({
   radius,
@@ -349,7 +351,7 @@ export const LockedGhost = ({ d, onClick }: { d: District; onClick: () => void }
 
 /* ── Districts renderer — single island era ──────────── */
 export const DistrictsRenderer = () => {
-  const { islandEra, viewingEra } = useGame();
+  const { islandEra, viewingEra  } = useGame(useShallow(s => ({ islandEra: s.islandEra, viewingEra: s.viewingEra })));
   const displayEra = viewingEra ?? islandEra;
   const tier = ISLAND_TIERS[displayEra];
 

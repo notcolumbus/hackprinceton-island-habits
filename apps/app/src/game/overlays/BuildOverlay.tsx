@@ -2,8 +2,10 @@ import { X, Hammer, Lock, Heart, AlertCircle } from "lucide-react";
 import { useGame, BUILD_LIBRARY } from "../state";
 import { useOverlayClose } from "@/hooks/useOverlayClose";
 
+import { useShallow } from "zustand/react/shallow";
+
 export const BuildOverlay = () => {
-  const { screen, setScreen, logs, rocks, level, setPlacingType, placingType } = useGame();
+  const { screen, setScreen, logs, rocks, level, setPlacingType, placingType  } = useGame(useShallow(s => ({ screen: s.screen, setScreen: s.setScreen, logs: s.logs, rocks: s.rocks, level: s.level, setPlacingType: s.setPlacingType, placingType: s.placingType })));
   const { closing, close } = useOverlayClose(() => setScreen(null));
 
   if (screen !== "build" && !closing) return null;

@@ -1,8 +1,10 @@
 import { useGame } from "@/game/state";
 import { useIsMobile } from "@/hooks/use-mobile";
 
+import { useShallow } from "zustand/react/shallow";
+
 export const DevPanel = () => {
-  const { devNextDay, devNextDayBad, devLevelUp, level, streak, groupMotivation } = useGame();
+  const { devNextDay, devNextDayBad, devLevelUp, level, streak, groupMotivation  } = useGame(useShallow(s => ({ devNextDay: s.devNextDay, devNextDayBad: s.devNextDayBad, devLevelUp: s.devLevelUp, level: s.level, streak: s.streak, groupMotivation: s.groupMotivation })));
   const isMobile = useIsMobile();
   if (isMobile) return null;
 

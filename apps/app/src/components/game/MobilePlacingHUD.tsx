@@ -2,6 +2,8 @@ import { useGame, BUILD_LIBRARY } from "@/game/state";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { mobileGhostPosRef } from "@/game/three/PlacementGhost";
 
+import { useShallow } from "zustand/react/shallow";
+
 /**
  * Mobile-only HUD shown during building placement.
  *
@@ -11,7 +13,7 @@ import { mobileGhostPosRef } from "@/game/three/PlacementGhost";
  *   3. Drag with one finger → pans the camera freely across all islands
  */
 export const MobilePlacingHUD = () => {
-  const { placingType, cancelPlacing } = useGame();
+  const { placingType, cancelPlacing  } = useGame(useShallow(s => ({ placingType: s.placingType, cancelPlacing: s.cancelPlacing })));
   const isMobile = useIsMobile();
 
   if (!placingType || !isMobile) return null;

@@ -3,8 +3,10 @@ import { X, Sparkles, ArrowRight, Lock, Clock, Building2 } from "lucide-react";
 import { useGame, ISLAND_TIERS } from "../state";
 import { useOverlayClose } from "@/hooks/useOverlayClose";
 
+import { useShallow } from "zustand/react/shallow";
+
 export const ExpandOverlay = () => {
-  const { screen, setScreen, islandEra, level, graduateIsland, canGraduate, islandHistory, visitIsland } = useGame();
+  const { screen, setScreen, islandEra, level, graduateIsland, canGraduate, islandHistory, visitIsland  } = useGame(useShallow(s => ({ screen: s.screen, setScreen: s.setScreen, islandEra: s.islandEra, level: s.level, graduateIsland: s.graduateIsland, canGraduate: s.canGraduate, islandHistory: s.islandHistory, visitIsland: s.visitIsland })));
   const { closing, close } = useOverlayClose(() => setScreen(null));
   const [tab, setTab] = useState<"islands" | "graduate">("islands");
 

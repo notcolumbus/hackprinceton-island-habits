@@ -1,7 +1,10 @@
+import logging
 from flask import jsonify, request
 
 from jobs import jobs_bp
 from jobs.k2 import generate_chat_reply
+
+logger = logging.getLogger(__name__)
 
 
 def _fallback_message(player_name: str, latest: str) -> str:
@@ -30,7 +33,7 @@ def chat_reply():
     try:
         message, reasoning = generate_chat_reply(player_name, island_context, history, latest)
     except Exception as exc:
-        print(f"[chat-reply] model call failed; using fallback: {exc}")
+        logger.error(f"[chat-reply] model call failed; using fallback: {exc}")
         return jsonify({"message": _fallback_message(player_name, latest), "reasoning": "fallback:model_error"}), 200
 
     res = {"message": message}

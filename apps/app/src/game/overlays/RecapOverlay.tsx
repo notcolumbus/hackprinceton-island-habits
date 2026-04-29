@@ -5,6 +5,8 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import { useGame } from "../state";
 import { useOverlayClose } from "@/hooks/useOverlayClose";
 
+import { useShallow } from "zustand/react/shallow";
+
 const ENCOURAGEMENTS = [
   "Week just started — plenty of room to surprise yourself.",
   "Early in the week. Stack two good days back-to-back.",
@@ -16,7 +18,7 @@ const ENCOURAGEMENTS = [
 ];
 
 export const RecapOverlay = () => {
-  const { screen, setScreen, islandId, islandName, agents } = useGame();
+  const { screen, setScreen, islandId, islandName, agents  } = useGame(useShallow(s => ({ screen: s.screen, setScreen: s.setScreen, islandId: s.islandId, islandName: s.islandName, agents: s.agents })));
   const { closing, close } = useOverlayClose(() => setScreen(null));
 
   // Always call hooks before any early return.

@@ -4,3 +4,4 @@ requests==2.32.3
 convex==0.7.0
 python-dotenv==1.1.0
 dedalus-sdk==0.1.0
+tenacity

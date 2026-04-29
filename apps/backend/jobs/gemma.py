@@ -4,6 +4,7 @@ import re
 from typing import Any, Optional, Tuple
 
 import requests
+from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
 
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 GOOGLE_MODEL = os.environ.get("GOOGLE_MODEL", "gemini-3-flash-preview")
@@ -60,6 +61,7 @@ def _split_reasoning(raw: str) -> Tuple[str, Optional[str]]:
     return content, reasoning
 
 
+@retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3), retry=retry_if_exception_type(requests.RequestException))
 def _call_gemma_raw(
     parts: list[dict[str, Any]],
     *,

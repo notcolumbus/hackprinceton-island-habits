@@ -1,11 +1,14 @@
 from datetime import datetime, timedelta, timezone
 
+import logging
 from flask import jsonify
 
 from jobs import jobs_bp
 from jobs.convex_client import get_client
 from jobs.k2 import generate_group_morning_reminder
 from jobs.photon import send_island_message
+
+logger = logging.getLogger(__name__)
 
 
 @jobs_bp.get("/debug-members")
@@ -52,7 +55,7 @@ def morning_reminder():
     yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
 
     members = db.query("jobQueries:getAllMembersForReminder")
-    print(f"[morning-reminder] {len(members)} members across islands")
+    logger.info(f"[morning-reminder] {len(members)} members across islands")
 
     # Bucket members by island so we send one group message per island.
     by_island: dict = {}
@@ -87,9 +90,9 @@ def morning_reminder():
                     "goals": [g["text"] for g in (m.get("goals") or [])],
                 })
 
-            print(f"[morning-reminder] Gemini call for island {island_id} (members={len(roster)})")
+            logger.info(f"[morning-reminder] Gemini call for island {island_id} (members={len(roster)})")
             message, reasoning = generate_group_morning_reminder(roster, team_recap)
-            print(f"[morning-reminder] Gemini → {message[:100]}")
+            logger.info(f"[morning-reminder] Gemini → {message[:100]}")
 
             send_island_message(island_id, message)
 
@@ -115,7 +118,7 @@ def morning_reminder():
             sent += 1
         except Exception as exc:
             failed += 1
-            print(f"[morning-reminder] island {island_id} failed: {exc}")
+            logger.error(f"[morning-reminder] island {island_id} failed: {exc}")
             continue
 
     return jsonify({"ok": True, "islands_sent": sent, "failed": failed})

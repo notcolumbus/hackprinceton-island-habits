@@ -7,6 +7,8 @@ import type { Building } from "../state";
 import { useGame } from "../state";
 
 import {
+import { useShallow } from "zustand/react/shallow";
+
   House, Garden, Library, Gym, Fountain, Bonfire, Lighthouse, Cabin, Dock, Shrine,
   Windmill, Treehouse, Bakery, TeaHouse, Observatory, BellTower, ZenGarden,
   CrystalGrotto, Amphitheater, Moongate
@@ -59,7 +61,7 @@ const Scaffolding = ({ progress }: { progress: number }) => {
 
 export const Building3D = ({ building }: Props) => {
   const { type, pos, rot = 0 } = building;
-  const { groupMotivation } = useGame();
+  const { groupMotivation  } = useGame(useShallow(s => ({ groupMotivation: s.groupMotivation })));
   const flameRef   = useRef<THREE.Mesh>(null);
   const lightRef   = useRef<THREE.Mesh>(null);
   const smokeRef   = useRef<THREE.Mesh>(null);

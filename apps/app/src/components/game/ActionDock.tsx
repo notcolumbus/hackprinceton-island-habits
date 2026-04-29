@@ -2,8 +2,10 @@ import { Home, Hammer, Sparkles, TrendingUp } from "lucide-react";
 import { useGame, type ScreenId } from "@/game/state";
 import { useIsMobile } from "@/hooks/use-mobile";
 
+import { useShallow } from "zustand/react/shallow";
+
 export const ActionDock = () => {
-  const { screen, setScreen } = useGame();
+  const { screen, setScreen  } = useGame(useShallow(s => ({ screen: s.screen, setScreen: s.setScreen })));
   const isMobile = useIsMobile();
 
   const navItems: { id: string; icon: typeof Home; route: ScreenId }[] = [

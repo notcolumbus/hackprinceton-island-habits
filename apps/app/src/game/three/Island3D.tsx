@@ -19,6 +19,8 @@ import { SceneryRenderer, GrassTufts } from "./Scenery3D";
 import { DistrictsRenderer } from "./Districts3D";
 import { PlacementGhost } from "./PlacementGhost";
 
+import { useShallow } from "zustand/react/shallow";
+
 /* ── Gradient skydome (A Short Hike-inspired palette) ─ */
 const SkyDome = () => {
   const domeRef = useRef<THREE.Mesh>(null);
@@ -282,7 +284,7 @@ const Particles = () => {
 
 /* ── Real-time build ticker ──────────────────────────── */
 const BuildTicker = () => {
-  const { tickBuildings, viewingEra } = useGame();
+  const { tickBuildings, viewingEra  } = useGame(useShallow(s => ({ tickBuildings: s.tickBuildings, viewingEra: s.viewingEra })));
   const flushTimer = useRef(0);
   const accumulated = useRef(0);
   useFrame((_s, delta) => {
@@ -535,8 +537,7 @@ const Scene = ({
   agentTrackPos: MutableRefObject<THREE.Vector3>;
   saveConversation: SaveConversationFn;
 }) => {
-  const {
-    agents,
+  const { agents,
     buildings,
     scenery,
     selectedAgent,
@@ -548,7 +549,7 @@ const Scene = ({
     audioMuted,
     showToast,
     islandId,
-  } = useGame();
+   } = useGame(useShallow(s => ({ agents: s.agents, buildings: s.buildings, scenery: s.scenery, selectedAgent: s.selectedAgent, setSelectedAgent: s.setSelectedAgent, placingType: s.placingType, islandEra: s.islandEra, viewingEra: s.viewingEra, timeOffsetMs: s.timeOffsetMs, audioMuted: s.audioMuted, showToast: s.showToast, islandId: s.islandId })));
   const agentPositions = useRef(new Map<string, THREE.Vector3>());
   const [activeConv, setActiveConv] = useState<ActiveConv | null>(null);
   const [gossipBubbles, setGossipBubbles] = useState<Map<string, string>>(new Map());

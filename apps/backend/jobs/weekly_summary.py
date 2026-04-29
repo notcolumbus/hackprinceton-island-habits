@@ -1,9 +1,12 @@
+import logging
 from flask import jsonify
 
 from jobs import jobs_bp
 from jobs.convex_client import get_client
 from jobs.k2 import generate_weekly_summary
 from jobs.photon import send_island_message
+
+logger = logging.getLogger(__name__)
 
 
 @jobs_bp.post("/weekly-summary")
@@ -18,40 +21,29 @@ def weekly_summary():
     db = get_client()
 
     islands = db.query("jobQueries:islandsReadyForWeeklySummary")
-    print(f"[weekly-summary] {len(islands)} islands due for summary")
+    logger.info(f"[weekly-summary] {len(islands)} islands due for summary")
     sent = 0
     failed = 0
+    summaries_to_record = []
 
     for entry in islands:
         try:
             island = entry["island"]
             phones = entry["phones"]
             events = entry["events"]
+            agents = entry.get("agents", [])
+            member_details = entry.get("memberDetails", [])
 
             if not phones:
-                print(f"[weekly-summary] island {island['_id']} has no phones — skip")
+                logger.info(f"[weekly-summary] island {island['_id']} has no phones — skip")
                 continue
 
-            # Pull members with displayNames so Gemini can name-check real people
-            # instead of phone numbers.
-            details = db.query(
-                "islands:getIslandDetails",
-                {"islandId": island["_id"]},
-            ) or {}
-            members = details.get("members") or []
             name_by_phone: dict = {}
-            for m in members:
+            for m in member_details:
                 phone = m.get("phoneNumber")
                 if not phone:
                     continue
-                raw = (m.get("displayName") or "").strip()
-                if raw:
-                    name_by_phone[phone] = raw.split(" ")[0]
-                elif "@" in phone:
-                    name_by_phone[phone] = phone.split("@", 1)[0]
-                else:
-                    digits = "".join(c for c in phone if c.isdigit())
-                    name_by_phone[phone] = f"Player {digits[-4:]}" if len(digits) >= 4 else phone
+                name_by_phone[phone] = m.get("displayName") or phone
 
             stats = _aggregate_stats(events, island)
 
@@ -69,7 +61,7 @@ def weekly_summary():
             top_completer_name = name_by_phone.get(stats["top_completer"]) or "nobody"
             top_misser_name = name_by_phone.get(stats["top_misser"]) if stats["top_misser"] else None
 
-            print(
+            logger.info(
                 f"[weekly-summary] Gemini call for island {island['_id']} "
                 f"(checkins={stats['total_checkins']}, misses={stats['total_misses']}, "
                 f"members={len(per_user)})"
@@ -83,7 +75,7 @@ def weekly_summary():
                 completion_rate=stats["completion_rate"],
                 top_misser=top_misser_name,
             )
-            print(f"[weekly-summary] Gemini → {narrative[:120]}")
+            logger.info(f"[weekly-summary] Gemini → {narrative[:120]}")
 
             log_stats = {**stats}
             if reasoning:
@@ -91,9 +83,9 @@ def weekly_summary():
 
             send_island_message(island["_id"], narrative)
 
-            agents = details.get("agents") or []
             island_agent = agents[0] if agents else None
-            db.mutation("jobMutations:recordWeeklySummary", {
+            
+            summaries_to_record.append({
                 "islandId": island["_id"],
                 "agentId": island_agent["_id"] if island_agent else None,
                 "content": narrative,
@@ -103,8 +95,14 @@ def weekly_summary():
             sent += 1
         except Exception as exc:
             failed += 1
-            print(f"[weekly-summary] island failed: {exc}")
+            logger.error(f"[weekly-summary] island failed: {exc}")
             continue
+
+    if summaries_to_record:
+        try:
+            db.mutation("jobMutations:recordWeeklySummariesBatch", {"summaries": summaries_to_record})
+        except Exception as exc:
+            logger.error(f"[weekly-summary] failed to record batch: {exc}")
 
     return jsonify({"ok": True, "summaries_sent": sent, "failed": failed})
 

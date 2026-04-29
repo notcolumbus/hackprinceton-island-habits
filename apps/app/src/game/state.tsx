@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
+import { create } from "zustand";
 import type { ReactNode } from "react";
 import a1 from "@/assets/agent-1.png";
 import a2 from "@/assets/agent-2.png";
@@ -279,8 +280,6 @@ export interface GameBootstrapData {
   islandEra?: number;
 }
 
-const Ctx = createContext<GameState | null>(null);
-export const GameCtx = Ctx;
 
 // How many real seconds make up 1 in-game day.
 // At 100% motivation: a 3-day building takes 3 × GAME_DAY_SECS real seconds.
@@ -399,229 +398,221 @@ export const scorePlacement = (
   return { score, valid: true, breakdown };
 };
 
-export const GameProvider = ({
-  children,
-  initialData,
-}: {
-  children: ReactNode;
-  initialData?: GameBootstrapData;
-}) => {
-  const seededIslandName = initialData?.islandName ?? "Pine Hollow";
-  const seededAgents = initialData ? (initialData.agents ?? []) : initialAgents;
-  const seededGoals = initialData ? (initialData.goals ?? []) : initialGoals;
-  const onBuildingPlacedRef = useRef(initialData?.onBuildingPlaced);
-  const onGoalCompletedRef = useRef(initialData?.onGoalCompleted);
-  const onDevNextDayRef = useRef(initialData?.onDevNextDay);
-  const onDevNextDayBadRef = useRef(initialData?.onDevNextDayBad);
-  const onDevLevelUpRef = useRef(initialData?.onDevLevelUp);
-  const onGraduateEraRef = useRef(initialData?.onGraduateEra);
 
-  // Keep callback refs in sync when the host (IslandPage) memoizes a new
-  // bootstrap object — useRef only captures the first render's value.
-  useEffect(() => {
-    onBuildingPlacedRef.current = initialData?.onBuildingPlaced;
-    onGoalCompletedRef.current = initialData?.onGoalCompleted;
-    onDevNextDayRef.current = initialData?.onDevNextDay;
-    onDevNextDayBadRef.current = initialData?.onDevNextDayBad;
-    onDevLevelUpRef.current = initialData?.onDevLevelUp;
-    onGraduateEraRef.current = initialData?.onGraduateEra;
-  }, [initialData]);
+export const useGameStore = create<GameState & {
+  callbacks: {
+    onBuildingPlaced?: (type: string, x: number, y: number, cost: number, days: number, logCost?: number, rockCost?: number) => void | Promise<unknown>;
+    onGoalCompleted?: (goalId: string) => void | Promise<void>;
+    onDevNextDay?: () => void | Promise<void>;
+    onDevNextDayBad?: () => void | Promise<void>;
+    onDevLevelUp?: () => void | Promise<void>;
+    onGraduateEra?: () => void | Promise<unknown>;
+  };
+  setCallbacks: (cbs: any) => void;
+  initData: (data: GameBootstrapData) => void;
+  eraSnapshots: EraSnapshot[];
+}>((set, get) => ({
+  screen: null,
+  setScreen: (s) => set({ screen: s }),
+  selectedAgent: initialAgents[0]?.id ?? "sofia",
+  setSelectedAgent: (id) => set({ selectedAgent: id }),
+  coins: 0, logs: 0, rocks: 0, streak: 0, dayCount: 1, level: 1, xp: 0,
+  islandId: null, phoneNumber: null, timeOffsetMs: 0,
+  agents: initialAgents,
+  buildings: initialBuildings,
+  scenery: initialScenery,
+  goals: initialGoals,
+  placingType: null,
+  setPlacingType: (t) => set({ placingType: t }),
+  pendingCheckIn: null,
+  setPendingCheckIn: (g) => set({ pendingCheckIn: g }),
+  chats: seedChats(initialAgents),
+  toast: null,
+  islandName: "Pine Hollow",
+  islandEra: 0,
+  eraSnapshots: [],
+  trackAgent: false,
+  setTrackAgent: (v) => set({ trackAgent: v }),
+  isTransitioning: false,
+  isVisiting: false,
+  viewingEra: null,
+  setViewingEra: (era) => set({ viewingEra: era }),
+  audioMuted: true,
+  setAudioMuted: (v) => set({ audioMuted: v }),
 
-  const [screen, setScreen] = useState<ScreenId>(null);
-  const [selectedAgent, setSelectedAgent] = useState<AgentId>(seededAgents[0]?.id ?? "sofia");
-  const [coins, setCoins] = useState(initialData?.coins ?? 0);
-  const [logs, setLogs] = useState(initialData?.logs ?? 0);
-  const [rocks, setRocks] = useState(initialData?.rocks ?? 0);
-  const [streak, setStreak] = useState(initialData?.streak ?? 0);
-  const [dayCount, setDayCount] = useState(initialData?.dayCount ?? 1);
-  const [level, setLevel] = useState(initialData?.level ?? 1);
-  const [xp, setXp] = useState(initialData?.xp ?? 0);
-  const [islandId] = useState<string | null>(initialData?.islandId ?? null);
-  const [phoneNumber] = useState<string | null>(initialData?.phoneNumber ?? null);
-  const [timeOffsetMs, setTimeOffsetMs] = useState<number>(
-    initialData?.serverNowMs ? initialData.serverNowMs - Date.now() : 0
-  );
-  const [agents, setAgents] = useState<Agent[]>(seededAgents);
-  const [buildings, setBuildings] = useState<Building[]>(initialData?.buildings ?? initialBuildings);
-  const [scenery] = useState<Scenery[]>(initialScenery);
-  const [goals, setGoals] = useState<Goal[]>(seededGoals);
-  const [placingType, setPlacingType] = useState<BuildingType | null>(null);
-  const [pendingCheckIn, setPendingCheckIn] = useState<Goal | null>(null);
-  const [chats, setChats] = useState<Record<string, ChatMsg[]>>(() => seedChats(seededAgents));
-  const [toast, setToast] = useState<string | null>(null);
-  const [islandName] = useState(seededIslandName);
+  callbacks: {},
+  setCallbacks: (cbs) => set({ callbacks: cbs }),
 
-  // Island era state — start on era 0 (Pine Hollow) with no history.
-  // islandHistory is derived below so every client (not just the one who
-  // clicked Fly) can open the visit UI for past eras.
-  const [islandEra, setIslandEra] = useState(initialData?.islandEra ?? 0);
-  const [eraSnapshots, setEraSnapshots] = useState<EraSnapshot[]>([]);
-  const [trackAgent, setTrackAgent] = useState(false);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const [isVisiting, setIsVisiting] = useState(false);
-  const [viewingEra, setViewingEra] = useState<number | null>(null);
-  const [audioMuted, setAudioMuted] = useState(true);
+  initData: (initialData) => {
+    if (!initialData) return;
+    const seededAgents = initialData.agents ?? initialAgents;
+    const serverNowMs = initialData.serverNowMs;
+    set({
+      islandName: initialData.islandName ?? "Pine Hollow",
+      islandId: initialData.islandId ?? null,
+      phoneNumber: initialData.phoneNumber ?? null,
+      coins: initialData.coins ?? 0,
+      logs: initialData.logs ?? 0,
+      rocks: initialData.rocks ?? 0,
+      streak: initialData.streak ?? 0,
+      dayCount: initialData.dayCount ?? 1,
+      level: initialData.level ?? 1,
+      xp: initialData.xp ?? 0,
+      agents: seededAgents,
+      buildings: initialData.buildings ?? initialBuildings,
+      goals: initialData.goals ?? initialGoals,
+      islandEra: initialData.islandEra ?? 0,
+      selectedAgent: seededAgents[0]?.id ?? "sofia",
+      chats: seedChats(seededAgents),
+      timeOffsetMs: serverNowMs ? serverNowMs - Date.now() : 0,
+    });
+  },
 
-  const showToast = useCallback((msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2400);
-  }, []);
+  showToast: (msg) => {
+    set({ toast: msg });
+    setTimeout(() => set({ toast: null }), 2400);
+  },
 
-  const syncFromConvex = useCallback((patch: ConvexSyncPatch) => {
-    if (patch.level !== undefined) setLevel(patch.level);
-    if (patch.xp !== undefined) setXp(patch.xp);
-    if (patch.coins !== undefined) setCoins(patch.coins);
-    if (patch.logs !== undefined) setLogs(patch.logs);
-    if (patch.rocks !== undefined) setRocks(patch.rocks);
-    if (patch.streak !== undefined) setStreak(patch.streak);
-    if (patch.dayCount !== undefined) setDayCount(patch.dayCount);
-    if (patch.islandEra !== undefined) setIslandEra(patch.islandEra);
-    if (patch.eraSnapshots !== undefined) setEraSnapshots(patch.eraSnapshots);
-    if (patch.serverNowMs !== undefined) {
-      setTimeOffsetMs(patch.serverNowMs - Date.now());
-    }
-    if (patch.agents !== undefined) {
-      setAgents((prev) => {
-        const prevById = new Map(prev.map((agent) => [agent.id, agent]));
-        return patch.agents!.map((incoming) => {
+  syncFromConvex: (patch) => {
+    set((state) => {
+      const next = { ...state };
+      if (patch.level !== undefined) next.level = patch.level;
+      if (patch.xp !== undefined) next.xp = patch.xp;
+      if (patch.coins !== undefined) next.coins = patch.coins;
+      if (patch.logs !== undefined) next.logs = patch.logs;
+      if (patch.rocks !== undefined) next.rocks = patch.rocks;
+      if (patch.streak !== undefined) next.streak = patch.streak;
+      if (patch.dayCount !== undefined) next.dayCount = patch.dayCount;
+      if (patch.islandEra !== undefined) next.islandEra = patch.islandEra;
+      if (patch.eraSnapshots !== undefined) next.eraSnapshots = patch.eraSnapshots;
+      if (patch.serverNowMs !== undefined) {
+        next.timeOffsetMs = patch.serverNowMs - Date.now();
+      }
+      if (patch.agents !== undefined) {
+        const prevById = new Map(state.agents.map((agent) => [agent.id, agent]));
+        next.agents = patch.agents.map((incoming) => {
           const existing = prevById.get(incoming.id);
           const { home: _home, ...rest } = incoming;
           return {
             ...(existing ?? incoming),
             ...rest,
-            // Only set home on first appearance; never overwrite so agents don't teleport
             home: existing?.home ?? incoming.home,
           };
         });
-      });
-    }
-    if (patch.buildings !== undefined) {
-      if (islandId) {
-        // In Convex mode, server is authoritative for placement and progress.
-        setBuildings(patch.buildings);
-      } else {
-        setBuildings((prev) =>
-          patch.buildings!.map((incoming) => {
-            const local = prev.find((b) => b.id === incoming.id);
+      }
+      if (patch.buildings !== undefined) {
+        if (state.islandId) {
+          next.buildings = patch.buildings;
+        } else {
+          next.buildings = patch.buildings.map((incoming) => {
+            const local = state.buildings.find((b) => b.id === incoming.id);
             return local
               ? { ...incoming, buildProgress: Math.max(local.buildProgress, incoming.buildProgress) }
               : incoming;
-          }),
-        );
+          });
+        }
       }
-    }
-    if (patch.goals !== undefined) setGoals(patch.goals);
-  }, [islandId]);
+      if (patch.goals !== undefined) next.goals = patch.goals;
+      return next;
+    });
+  },
 
-  const graduateIsland = useCallback(() => {
+  graduateIsland: () => {
+    const { islandEra, level, callbacks, islandId } = get();
     const next = ISLAND_TIERS[islandEra + 1];
     if (!next) return;
-    if (level < next.unlockLevel) { showToast(`Need Lv.${next.unlockLevel}`); return; }
-    setIsTransitioning(true);
-    // In Convex mode, the era is the source of truth — mutating it on the
-    // server makes old-era buildings stay parked (placedAtEra < new era) and
-    // the new era start empty. Local state gets re-synced by ConvexSyncBridge.
-    const persist = onGraduateEraRef.current;
+    if (level < next.unlockLevel) { get().showToast(`Need Lv.${next.unlockLevel}`); return; }
+    set({ isTransitioning: true });
+    
+    const persist = callbacks.onGraduateEra;
     const finishLocal = () => {
-      if (!islandId) {
-        // Offline/demo path: mutate local state since there is no server.
-        setIslandEra(islandEra + 1);
-        setBuildings([]);
+      const state = get();
+      if (!state.islandId) {
+        set({ islandEra: state.islandEra + 1, buildings: [] });
       }
-      setScreen(null);
-      setIsTransitioning(false);
-      showToast(`🏝️ Welcome to ${next.name}!`);
+      set({ screen: null, isTransitioning: false });
+      get().showToast(`🏝️ Welcome to ${next.name}!`);
     };
     if (persist) {
       Promise.resolve(persist())
         .then(() => setTimeout(finishLocal, 1200))
         .catch((err) => {
           console.error("Failed to graduate era", err);
-          setIsTransitioning(false);
-          showToast(err instanceof Error ? err.message : "Failed to graduate");
+          set({ isTransitioning: false });
+          get().showToast(err instanceof Error ? err.message : "Failed to graduate");
         });
     } else {
       setTimeout(finishLocal, 1200);
     }
-  }, [islandEra, buildings, level, coins, islandId, showToast]);
+  },
 
-  const placeBuildingAt = useCallback((pos: [number, number]): boolean => {
+  placeBuildingAt: (pos) => {
+    const { placingType, coins, islandEra, buildings, scenery, callbacks } = get();
     if (!placingType) return false;
     const opt = BUILD_LIBRARY.find((b) => b.type === placingType)!;
-    // Affordability check FIRST — the server would also reject, but we want
-    // the player to see a clear "Not enough coins" toast instead of the
-    // building briefly appearing and then vanishing on rollback.
     if (coins < opt.cost) {
-      showToast(`Need ${opt.cost} coins · you have ${coins}`);
+      get().showToast(`Need ${opt.cost} coins · you have ${coins}`);
       return false;
     }
     const currentRadius = ISLAND_TIERS[islandEra].radius;
-    // Placement collision / harmony scoring should only consider buildings
-    // on the CURRENT era — state.buildings now includes every era so past
-    // islands can be visited, but they don't block new placements.
     const currentEraBuildings = buildings.filter((b) => (b.placedAtEra ?? 0) === islandEra);
     const result = scorePlacement(placingType, pos, currentEraBuildings, scenery, currentRadius);
-    if (!result.valid) { showToast(result.reason || "Can't place here"); return false; }
+    if (!result.valid) { get().showToast(result.reason || "Can't place here"); return false; }
+    
     const pendingId = `pending-${Date.now()}`;
-    setPlacingType(null);
-    // Optimistic updates so the UI reflects the cost immediately. The
-    // Convex sync bridge will replace `buildings` and reconcile `coins` with
-    // the server once the mutation lands. On failure we roll both back.
-    setBuildings((bs) => [
-      ...bs,
-      {
-        id: pendingId,
-        type: placingType,
-        pos,
-        district: "main",
-        score: result.score,
-        buildProgress: 0,
-        buildTime: opt.buildDays,
-        placedAtEra: islandEra,
-      },
-    ]);
-    setCoins((c) => c - opt.cost);
+    set((state) => ({
+      placingType: null,
+      coins: state.coins - opt.cost,
+      buildings: [
+        ...state.buildings,
+        {
+          id: pendingId,
+          type: placingType,
+          pos,
+          district: "main",
+          score: result.score,
+          buildProgress: 0,
+          buildTime: opt.buildDays,
+          placedAtEra: islandEra,
+        },
+      ]
+    }));
 
-    const persist = onBuildingPlacedRef.current;
+    const persist = callbacks.onBuildingPlaced;
     if (!persist) {
-      showToast(`+${result.score} harmony · ${opt.name} built!`);
+      get().showToast(`+${result.score} harmony · ${opt.name} built!`);
       return true;
     }
 
-    showToast(`Placing ${opt.name}...`);
+    get().showToast(`Placing ${opt.name}...`);
     Promise.resolve(persist(placingType, pos[0], pos[1], opt.cost, opt.buildDays, opt.logCost, opt.rockCost))
       .then(() => {
-        showToast(`+${result.score} harmony · ${opt.name} built!`);
+        get().showToast(`+${result.score} harmony · ${opt.name} built!`);
       })
       .catch((err) => {
         console.error("Failed to persist building placement", err);
-        setBuildings((bs) => bs.filter((b) => b.id !== pendingId));
-        setCoins((c) => c + opt.cost);
+        set((state) => ({
+          buildings: state.buildings.filter((b) => b.id !== pendingId),
+          coins: state.coins + opt.cost
+        }));
         const message = err instanceof Error ? err.message : "Failed to place building";
-        showToast(message);
+        get().showToast(message);
       });
 
     return true;
-  }, [placingType, buildings, coins, scenery, islandEra, showToast]);
+  },
 
-  const cancelPlacing = useCallback(() => setPlacingType(null), []);
+  cancelPlacing: () => set({ placingType: null }),
 
-  // Animated island visit (with flight transition)
-  const visitIsland = useCallback((era: number | null) => {
-    setIsVisiting(true);
+  visitIsland: (era) => {
+    set({ isVisiting: true });
     setTimeout(() => {
-      setViewingEra(era);
-      setIsVisiting(false);
+      set({ viewingEra: era, isVisiting: false });
     }, 900);
-  }, []);
+  },
 
-  // Derived: history of past eras, built from the current era. Every client
-  // (not just the one who clicked Fly) can open the visit UI for any era
-  // they've already graduated past, because era lives on the server.
-  const islandHistory = useMemo<IslandSnapshot[]>(() => {
-    // Group every synced building by the era it was placed in so the Visit
-    // UI can replay an old island's layout. `buildings` now holds ALL eras
-    // (the Convex bridge stopped filtering); we bucket them once here.
+  get islandHistory() {
+    const { buildings, eraSnapshots, islandEra } = get();
     const buildingsByEra = new Map<number, Building[]>();
     for (const b of buildings) {
       const era = b.placedAtEra ?? 0;
@@ -629,9 +620,6 @@ export const GameProvider = ({
       bucket.push(b);
       buildingsByEra.set(era, bucket);
     }
-    // Look up per-era metadata (level at graduation, date) from the server
-    // snapshot array. Older islands created before this existed will have
-    // undefined entries — fall back to zeros + empty string for those.
     const snapshotByEra = new Map<number, EraSnapshot>();
     for (const s of eraSnapshots) {
       snapshotByEra.set(s.era, s);
@@ -652,32 +640,32 @@ export const GameProvider = ({
       });
     }
     return entries;
-  }, [islandEra, buildings, eraSnapshots]);
+  },
 
-  // Derived: group motivation factor (0–1). Used by ticker + UI.
-  const groupMotivation = useMemo(() => {
+  get groupMotivation() {
+    const { agents } = get();
     if (agents.length === 0) return 0;
     const avgMood = agents.reduce((s, a) => s + a.mood, 0) / agents.length;
     const onlineFrac = agents.filter(a => a.online).length / agents.length;
     return Math.max(0, (avgMood - 20) / 80) * onlineFrac;
-  }, [agents]);
+  },
+  
+  get canGraduate() {
+    const { islandEra, level } = get();
+    return !!ISLAND_TIERS[islandEra + 1] && level >= ISLAND_TIERS[islandEra + 1].unlockLevel;
+  },
 
-  // Real-time build ticker — called every ~1s by BuildTicker in the scene
-  // Formula: motFactor = max(0, (avgMood - 20) / 80) × onlineFraction
-  //          progressPerSec = motFactor / (buildTime × 30)
-  const tickBuildings = useCallback((delta: number) => {
-    if (islandId) {
-      return;
-    }
-    setBuildings(bs => {
-      const hasUnfinished = bs.some(b => b.buildProgress < 1);
-      if (!hasUnfinished) return bs;
+  tickBuildings: (delta) => {
+    const state = get();
+    if (state.islandId) return;
+    const groupMotivation = state.groupMotivation;
+    set((s) => {
+      const hasUnfinished = s.buildings.some(b => b.buildProgress < 1);
+      if (!hasUnfinished) return s;
 
       let anyCompleted = false;
-      const next = bs.map(b => {
+      const next = s.buildings.map(b => {
         if (b.buildProgress >= 1) return b;
-        // 1 game-day of progress (at full motivation) = 1/buildTime per day
-        // Real rate: progressPerSec = groupMotivation / (buildTime * GAME_DAY_SECS)
         const progressPerSec = groupMotivation / (Math.max(1, b.buildTime) * GAME_DAY_SECS);
         const newProgress = Math.min(1, b.buildProgress + progressPerSec * delta);
         if (newProgress >= 1 && b.buildProgress < 1) anyCompleted = true;
@@ -685,18 +673,17 @@ export const GameProvider = ({
       });
 
       if (anyCompleted) {
-        setTimeout(() => showToast("🏗️ Building complete!"), 0);
+        setTimeout(() => get().showToast("🏗️ Building complete!"), 0);
       }
-      return next;
+      return { buildings: next };
     });
-  }, [groupMotivation, showToast]);
+  },
 
-  // Dev controls
-  // ☀️✓ Good day: all goals get done → mood boost, streak up, coins earned
-  const devNextDay = useCallback(() => {
-    if (islandId && onDevNextDayRef.current) {
+  devNextDay: () => {
+    const { islandId, callbacks, showToast } = get();
+    if (islandId && callbacks.onDevNextDay) {
       showToast("Syncing good day...");
-      Promise.resolve(onDevNextDayRef.current())
+      Promise.resolve(callbacks.onDevNextDay())
         .then(() => showToast("☀️ Great day synced"))
         .catch((err) => {
           console.error("Failed to sync good day", err);
@@ -708,21 +695,22 @@ export const GameProvider = ({
       showToast("Good day action is unavailable in synced mode.");
       return;
     }
-    setGoals(gs => gs.map(g => ({ ...g, done: true })));
-    setStreak(s => s + 1);
-    setDayCount((d) => d + 1);
-    setCoins(c => c + 50);
-    setAgents(as => as.map(a => a.isYou ? { ...a, mood: Math.min(100, a.mood + 8) } : a));
+    set((s) => ({
+      goals: s.goals.map(g => ({ ...g, done: true })),
+      streak: s.streak + 1,
+      dayCount: s.dayCount + 1,
+      coins: s.coins + 50,
+      agents: s.agents.map(a => a.isYou ? { ...a, mood: Math.min(100, a.mood + 8) } : a)
+    }));
     showToast("☀️ Great day! All goals done · mood +8 · +50 coins");
-    // Reset for tomorrow after toast
-    setTimeout(() => setGoals(gs => gs.map(g => ({ ...g, done: false }))), 400);
-  }, [showToast]);
+    setTimeout(() => set((s) => ({ goals: s.goals.map(g => ({ ...g, done: false })) })), 400);
+  },
 
-  // ☀️✗ Bad day: goals not done → mood drops, streak breaks
-  const devNextDayBad = useCallback(() => {
-    if (islandId && onDevNextDayBadRef.current) {
+  devNextDayBad: () => {
+    const { islandId, callbacks, showToast } = get();
+    if (islandId && callbacks.onDevNextDayBad) {
       showToast("Syncing bad day...");
-      Promise.resolve(onDevNextDayBadRef.current())
+      Promise.resolve(callbacks.onDevNextDayBad())
         .then(() => showToast("😞 Bad day synced"))
         .catch((err) => {
           console.error("Failed to sync bad day", err);
@@ -734,17 +722,20 @@ export const GameProvider = ({
       showToast("Bad day action is unavailable in synced mode.");
       return;
     }
-    setGoals(gs => gs.map(g => ({ ...g, done: false }))); // stays incomplete
-    setStreak(0); // streak breaks
-    setDayCount((d) => d + 1);
-    setAgents(as => as.map(a => a.isYou ? { ...a, mood: Math.max(10, a.mood - 15) } : a));
+    set((s) => ({
+      goals: s.goals.map(g => ({ ...g, done: false })),
+      streak: 0,
+      dayCount: s.dayCount + 1,
+      agents: s.agents.map(a => a.isYou ? { ...a, mood: Math.max(10, a.mood - 15) } : a)
+    }));
     showToast("😞 Missed goals · mood −15 · streak lost");
-  }, [showToast]);
+  },
 
-  const devLevelUp = useCallback(() => {
-    if (islandId && onDevLevelUpRef.current) {
+  devLevelUp: () => {
+    const { islandId, callbacks, showToast } = get();
+    if (islandId && callbacks.onDevLevelUp) {
       showToast("Syncing level up...");
-      Promise.resolve(onDevLevelUpRef.current())
+      Promise.resolve(callbacks.onDevLevelUp())
         .then(() => showToast("⚡ Level up synced"))
         .catch((err) => {
           console.error("Failed to sync level up", err);
@@ -756,22 +747,22 @@ export const GameProvider = ({
       showToast("Level up action is unavailable in synced mode.");
       return;
     }
-    setLevel(l => l + 1);
-    setXp(0);
+    set((s) => ({ level: s.level + 1, xp: 0 }));
     showToast("⚡ Level up!");
-  }, [islandId, showToast]);
+  },
 
-  const completeGoal = useCallback((id: string) => {
+  completeGoal: (id) => {
+    const { goals, callbacks, showToast } = get();
     const goalToComplete = goals.find((goal) => goal.id === id);
     if (!goalToComplete || goalToComplete.done) {
-      setPendingCheckIn(null);
+      set({ pendingCheckIn: null });
       return;
     }
 
-    setGoals((gs) => gs.map((goal) => goal.id === id ? { ...goal, done: true } : goal));
+    set((s) => ({ goals: s.goals.map((g) => g.id === id ? { ...g, done: true } : g) }));
     showToast(`Syncing check-in for "${goalToComplete.text}"...`);
 
-    const persist = onGoalCompletedRef.current;
+    const persist = callbacks.onGoalCompleted;
     if (persist) {
       Promise.resolve(persist(id))
         .then(() => {
@@ -779,88 +770,87 @@ export const GameProvider = ({
         })
         .catch((err) => {
           console.error("Failed to persist goal completion", err);
-          setGoals((gs) => gs.map((goal) => goal.id === id ? { ...goal, done: false } : goal));
+          set((s) => ({ goals: s.goals.map((g) => g.id === id ? { ...g, done: false } : g) }));
           const message = err instanceof Error ? err.message : "Failed to save check-in";
           showToast(message);
         });
-      setPendingCheckIn(null);
+      set({ pendingCheckIn: null });
       return;
     }
 
-    // Local-only fallback when no backend callback is wired.
-    setCoins((c) => c + goalToComplete.reward);
-    setXp((prevXp) => {
-      const newXp = prevXp + 5;
+    set((s) => {
+      let newLevel = s.level;
+      let newXp = s.xp + 5;
       if (newXp >= 100) {
-        setLevel((l) => l + 1);
-        return 0;
+        newLevel += 1;
+        newXp = 0;
       }
-      return newXp;
+      return {
+        coins: s.coins + goalToComplete.reward,
+        xp: newXp,
+        level: newLevel,
+        agents: s.agents.map(a =>
+          a.isYou
+            ? { ...a, mood: Math.min(100, a.mood + 6) }
+            : { ...a, mood: Math.min(100, a.mood + 2) }
+        )
+      };
     });
-    setAgents(as => as.map(a =>
-      a.isYou
-        ? { ...a, mood: Math.min(100, a.mood + 6) }
-        : { ...a, mood: Math.min(100, a.mood + 2) }
-    ));
     showToast(`+${goalToComplete.reward} coins · mood +6 🌟 · ${goalToComplete.text} ✓`);
-    setPendingCheckIn(null);
-  }, [goals, showToast]);
+    set({ pendingCheckIn: null });
+  },
 
-  const addGoal = useCallback((text: string, reward: number, photo?: boolean) => {
-    setGoals((gs) => [...gs, { id: `g${Date.now()}`, text, done: false, reward, photo: photo ?? false }]);
-  }, []);
+  addGoal: (text, reward, photo) => {
+    set((s) => ({ goals: [...s.goals, { id: `g${Date.now()}`, text, done: false, reward, photo: photo ?? false }] }));
+  },
 
-  const editGoal = useCallback((id: string, text: string, reward: number, photo?: boolean) => {
-    setGoals((gs) => gs.map((g) => g.id === id ? { ...g, text, reward, photo: photo ?? g.photo } : g));
-  }, []);
+  editGoal: (id, text, reward, photo) => {
+    set((s) => ({ goals: s.goals.map((g) => g.id === id ? { ...g, text, reward, photo: photo ?? g.photo } : g) }));
+  },
 
-  const deleteGoal = useCallback((id: string) => {
-    setGoals((gs) => gs.filter((g) => g.id !== id));
-  }, []);
+  deleteGoal: (id) => {
+    set((s) => ({ goals: s.goals.filter((g) => g.id !== id) }));
+  },
 
-  const sendChat = useCallback((id: AgentId, text: string) => {
-    const userMsg: ChatMsg = { from: "you", text, ts: Date.now() };
-    setChats((c) => ({ ...c, [id]: [...(c[id] ?? []), userMsg] }));
+  sendChat: (id, text) => {
+    const userMsg = { from: "you", text, ts: Date.now() } as ChatMsg;
+    set((s) => ({ chats: { ...s.chats, [id]: [...(s.chats[id] ?? []), userMsg] } }));
     setTimeout(() => {
       const replies = ["Love it 💚", "Let's do it together!", "I'll cheer you on 🏝️", "That sounds wonderful.", "Mmm, I needed that."];
-      const reply: ChatMsg = { from: "agent", text: replies[Math.floor(Math.random() * replies.length)], ts: Date.now() };
-      setChats((c) => ({ ...c, [id]: [...(c[id] ?? []), reply] }));
+      const reply = { from: "agent", text: replies[Math.floor(Math.random() * replies.length)], ts: Date.now() } as ChatMsg;
+      set((s) => ({ chats: { ...s.chats, [id]: [...(s.chats[id] ?? []), reply] } }));
     }, 900);
-  }, []);
+  },
+}));
 
-  const canGraduate = !!ISLAND_TIERS[islandEra + 1] && level >= ISLAND_TIERS[islandEra + 1].unlockLevel;
+export const GameProvider = ({
+  children,
+  initialData,
+}: {
+  children: ReactNode;
+  initialData?: GameBootstrapData;
+}) => {
+  const initData = useGameStore((s) => s.initData);
+  const setCallbacks = useGameStore((s) => s.setCallbacks);
 
-  return (
-    <Ctx.Provider value={{
-      screen, setScreen,
-      selectedAgent, setSelectedAgent,
-      coins, logs, rocks, streak, dayCount, level, xp,
-      agents, buildings, scenery, goals,
-      islandEra, islandHistory, isTransitioning, graduateIsland, canGraduate,
-      viewingEra, setViewingEra, isVisiting, visitIsland,
-      placingType, setPlacingType, placeBuildingAt, cancelPlacing,
-      completeGoal, addGoal, editGoal, deleteGoal, pendingCheckIn, setPendingCheckIn,
-      chats, sendChat,
-      toast, showToast,
-      islandName,
-      islandId,
-      phoneNumber,
-      timeOffsetMs,
-      trackAgent, setTrackAgent,
-      audioMuted, setAudioMuted,
-      syncFromConvex,
-      devNextDay, devNextDayBad, devLevelUp,
-      tickBuildings,
-      groupMotivation,
-    }}>
-      {children}
-    </Ctx.Provider>
-  );
+  useEffect(() => {
+    if (initialData) {
+      initData(initialData);
+      setCallbacks({
+        onBuildingPlaced: initialData.onBuildingPlaced,
+        onGoalCompleted: initialData.onGoalCompleted,
+        onDevNextDay: initialData.onDevNextDay,
+        onDevNextDayBad: initialData.onDevNextDayBad,
+        onDevLevelUp: initialData.onDevLevelUp,
+        onGraduateEra: initialData.onGraduateEra,
+      });
+    }
+  }, [initialData, initData, setCallbacks]);
+
+  return <>{children}</>;
 };
 
-export const useGame = () => {
-  const v = useContext(Ctx);
-  if (!v) throw new Error("useGame must be inside GameProvider");
-  return v;
+export const useGame = <T,>(selector?: (state: GameState) => T): T => {
+  if (selector) return useGameStore(selector);
+  return useGameStore() as unknown as T;
 };
-     

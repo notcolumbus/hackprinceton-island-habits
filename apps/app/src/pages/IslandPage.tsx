@@ -15,6 +15,8 @@ import a4 from '@/assets/agent-4.png'
 import a5 from '@/assets/agent-5.png'
 import '@/styles/islandHarmony.css'
 
+import { useShallow } from "zustand/react/shallow";
+
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string | undefined)?.replace(/\/?$/, '/') ?? ''
 
 // Fire Flask jobs that normally live on a cron. For the demo, we piggy-back
@@ -172,7 +174,7 @@ function buildUiAgents(args: {
 }
 
 function BuildProgressSync({ islandId }: { islandId: Id<'islands'> }) {
-  const { buildings, groupMotivation } = useGame()
+  const { buildings, groupMotivation  } = useGame(useShallow(s => ({ buildings: s.buildings, groupMotivation: s.groupMotivation })))
   const tickProgress = useMutation(api.buildings.tickBuildProgress)
   const buildingsRef = useRef(buildings)
   const motivationRef = useRef(groupMotivation)
@@ -185,7 +187,7 @@ function BuildProgressSync({ islandId }: { islandId: Id<'islands'> }) {
       tickProgress({ islandId, motivationFactor: motivationRef.current }).catch(console.error)
     }
     tick() // fire immediately on mount
-    const id = setInterval(tick, 5_000)
+    const id = setInterval(tick, 60_000)
     return () => clearInterval(id)
   }, [islandId, tickProgress]) // stable deps — one interval per island
 
@@ -193,7 +195,7 @@ function BuildProgressSync({ islandId }: { islandId: Id<'islands'> }) {
 }
 
 function ConvexSyncBridge({ islandId }: { islandId: Id<'islands'> }) {
-  const { syncFromConvex, phoneNumber } = useGame()
+  const { syncFromConvex, phoneNumber  } = useGame(useShallow(s => ({ syncFromConvex: s.syncFromConvex, phoneNumber: s.phoneNumber })))
   const islandDetails = useQuery(api.islands.getIslandDetails, { islandId })
   const islandBuildings = useQuery(api.buildings.getBuildings, { islandId })
   const islandGoals = useQuery(api.goals.getIslandGoals, { islandId })

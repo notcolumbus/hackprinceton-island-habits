@@ -6,12 +6,15 @@ Use these from a browser / curl to isolate which layer is broken:
 - /jobs/test-pipeline  → full flow end-to-end, short-circuited to 1 target
 """
 
+import logging
 from flask import jsonify, request
 
 from jobs import jobs_bp
 from jobs.convex_client import get_client
 from jobs.k2 import generate_morning_reminder
 from jobs.photon import send_message, send_island_message
+
+logger = logging.getLogger(__name__)
 
 
 DEMO_PERSONALITY = {
@@ -41,7 +44,7 @@ def test_k2():
             "reasoning_preview": (reasoning or "")[:200],
         })
     except Exception as exc:
-        print(f"[test-k2] FAILED: {exc}")
+        logger.error(f"[test-k2] FAILED: {exc}")
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
@@ -67,7 +70,7 @@ def test_photon():
             return jsonify({"ok": True, "mode": "direct", "to": body["to"]})
         return jsonify({"ok": False, "error": "Provide 'to' or 'islandId'"}), 400
     except Exception as exc:
-        print(f"[test-photon] FAILED: {exc}")
+        logger.error(f"[test-photon] FAILED: {exc}")
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
@@ -86,7 +89,7 @@ def test_pipeline():
         entry = members[0]
         phone = entry["phoneNumber"]
         goals = [g["text"] for g in entry["goals"]]
-        print(f"[test-pipeline] target={phone} goals={goals}")
+        logger.info(f"[test-pipeline] target={phone} goals={goals}")
 
         message, reasoning = generate_morning_reminder(
             entry["agent"].get("personalityProfile") or DEMO_PERSONALITY,
@@ -94,7 +97,7 @@ def test_pipeline():
             miss_streak=0,
             team_recap="",
         )
-        print(f"[test-pipeline] Gemini → {message[:80]}")
+        logger.info(f"[test-pipeline] Gemini → {message[:80]}")
 
         send_message(phone, message)
         return jsonify({
@@ -104,5 +107,5 @@ def test_pipeline():
             "reasoning_preview": (reasoning or "")[:200],
         })
     except Exception as exc:
-        print(f"[test-pipeline] FAILED: {exc}")
+        logger.error(f"[test-pipeline] FAILED: {exc}")
         return jsonify({"ok": False, "error": str(exc)}), 500

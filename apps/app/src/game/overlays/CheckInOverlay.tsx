@@ -3,8 +3,10 @@ import { X, Camera, Check, Sparkles } from "lucide-react";
 import { useGame } from "../state";
 import { useOverlayClose } from "@/hooks/useOverlayClose";
 
+import { useShallow } from "zustand/react/shallow";
+
 export const CheckInOverlay = () => {
-  const { screen, setScreen, goals, completeGoal, pendingCheckIn, setPendingCheckIn } = useGame();
+  const { screen, setScreen, goals, completeGoal, pendingCheckIn, setPendingCheckIn  } = useGame(useShallow(s => ({ screen: s.screen, setScreen: s.setScreen, goals: s.goals, completeGoal: s.completeGoal, pendingCheckIn: s.pendingCheckIn, setPendingCheckIn: s.setPendingCheckIn })));
   const { closing, close } = useOverlayClose(() => {
     setScreen(null);
     setPendingCheckIn(null);

@@ -1,4 +1,5 @@
 import json
+import functools
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -7,6 +8,7 @@ from jobs.gemma import call_gemma_json, call_gemma_text
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 
+@functools.lru_cache(maxsize=None)
 def _load(name: str) -> str:
     return (PROMPTS_DIR / name).read_text()
 

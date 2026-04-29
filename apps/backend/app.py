@@ -1,6 +1,7 @@
 import base64
 import os
 import uuid
+import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
@@ -9,9 +10,13 @@ load_dotenv()
 import requests
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
 
 from jobs import jobs_bp
 from jobs.convex_client import get_client
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
@@ -36,6 +41,7 @@ def _knot_auth_header() -> str:
     return f"Basic {encoded}"
 
 
+@retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3), retry=retry_if_exception_type(requests.RequestException))
 def _knot_request(
     method: str,
     path: str,
@@ -264,9 +270,9 @@ def create_knot_session():
                         {"participantId": pid, "externalUserId": user_id},
                     )
                 except Exception as bind_error:
-                    print(f"[knot/session] failed to bind participant={pid}: {bind_error}")
+                    logger.error(f"[knot/session] failed to bind participant={pid}: {bind_error}")
         except Exception as convex_error:
-            print(f"[knot/session] failed to initialize Convex client: {convex_error}")
+            logger.error(f"[knot/session] failed to initialize Convex client: {convex_error}")
 
     return jsonify(response.json())
 
@@ -402,7 +408,7 @@ def knot_webhook():
     merchant = payload.get("merchant") or payload.get("merchant_name")
 
     if str(event).upper() == "AUTHENTICATED" and str(connection_status).lower() == "connected":
-        print(f"onSuccess merchant connected: {merchant}")
+        logger.info(f"onSuccess merchant connected: {merchant}")
 
     return jsonify({"received": True})
 
