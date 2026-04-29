@@ -36,10 +36,9 @@ export const getActiveMembersWithGoals = query({
 
       const goals = await ctx.db
         .query("goals")
-        .withIndex("by_island_phone", (q) =>
-          q.eq("islandId", member.islandId).eq("phoneNumber", member.phoneNumber)
+        .withIndex("by_island_phone_status", (q) =>
+          q.eq("islandId", member.islandId).eq("phoneNumber", member.phoneNumber).eq("status", "active")
         )
-        .filter((q) => q.eq(q.field("status"), "active"))
         .collect();
 
       if (goals.length === 0) continue;
@@ -88,10 +87,9 @@ export const getAllMembersForReminder = query({
 
       const goals = await ctx.db
         .query("goals")
-        .withIndex("by_island_phone", (q) =>
-          q.eq("islandId", member.islandId).eq("phoneNumber", member.phoneNumber)
+        .withIndex("by_island_phone_status", (q) =>
+          q.eq("islandId", member.islandId).eq("phoneNumber", member.phoneNumber).eq("status", "active")
         )
-        .filter((q) => q.eq(q.field("status"), "active"))
         .collect();
 
       // Look up a friendly name so the group message reads like a chat.
@@ -166,7 +164,7 @@ export const getUncheckedGoalsForDate = query({
   handler: async (ctx, { date }) => {
     const activeGoals = await ctx.db
       .query("goals")
-      .filter((q) => q.eq(q.field("status"), "active"))
+      .withIndex("by_status", (q) => q.eq("status", "active"))
       .collect();
 
     const results: {
@@ -235,7 +233,7 @@ export const getConstructingBuildings = query({
   handler: async (ctx) => {
     const buildings = await ctx.db
       .query("buildings")
-      .filter((q) => q.eq(q.field("state"), "constructing"))
+      .withIndex("by_state", (q) => q.eq("state", "constructing"))
       .collect();
 
     const results: { building: Doc<"buildings">; agents: Doc<"agents">[] }[] = [];

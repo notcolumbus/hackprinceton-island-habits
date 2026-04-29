@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { defaultActivity, defaultMovementState } from "./lib/agentState";
-import { normalizeParticipantId, normalizeParticipantList } from "./lib/identity";
+import { normalizeParticipantId, normalizeParticipantList, requireParticipantId } from "./lib/identity";
 
 // Generate a random alphanumeric code (4-6 chars)
 function generateCode(): string {
@@ -54,6 +54,16 @@ export const createIsland = mutation({
     const participants = normalizeParticipantList(args.phoneNumbers);
     if (participants.length === 0) {
       throw new Error("At least one participant is required");
+    }
+
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const identityPhone = identity.phoneNumber ? normalizeParticipantId(identity.phoneNumber) : null;
+    const identityEmail = identity.email ? normalizeParticipantId(identity.email) : null;
+    
+    if (!participants.includes(identityPhone as string) && !participants.includes(identityEmail as string)) {
+      throw new Error("Unauthorized: must include your own identity");
     }
 
     let code = generateCode();
@@ -173,7 +183,7 @@ export const joinIsland = mutation({
     phoneNumber: v.string(),
   },
   async handler(ctx, args) {
-    const participantId = normalizeParticipantId(args.phoneNumber);
+    const participantId = await requireParticipantId(ctx, args.phoneNumber);
 
     // Check if already a member
     const existing = await ctx.db
@@ -295,7 +305,7 @@ export const getIslandsByPhone = query({
     phoneNumber: v.string(),
   },
   async handler(ctx, args) {
-    const participantId = normalizeParticipantId(args.phoneNumber);
+    const participantId = await requireParticipantId(ctx, args.phoneNumber);
     const members = await ctx.db
       .query("islandMembers")
       .withIndex("by_phone", (q) => q.eq("phoneNumber", participantId))

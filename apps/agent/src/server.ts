@@ -54,7 +54,18 @@ export function startHttpServer(app: SpectrumApp): http.Server {
     }
 
     let body = "";
-    for await (const chunk of req) body += chunk;
+    let size = 0;
+    const MAX_SIZE = 1024 * 1024; // 1MB limit
+
+    for await (const chunk of req) {
+      size += chunk.length;
+      if (size > MAX_SIZE) {
+        res.writeHead(413).end(JSON.stringify({ error: "Payload Too Large" }));
+        req.destroy();
+        return;
+      }
+      body += chunk;
+    }
 
     let payload: Record<string, unknown>;
     try {

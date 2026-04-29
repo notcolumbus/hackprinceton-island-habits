@@ -14,6 +14,19 @@ import { ConvexHttpClient } from "convex/browser";
 import { appendMessage, getHistory } from "./state/chat-history.js";
 import "dotenv/config";
 
+import { Island, Goal, Agent, PhotoAnalysisResponse, PhotoAutoCheckInResult, GoalLookup } from "./db/types.js";
+import { resolveSenderIsland, fetchGoals, lookupGoalByIndex, todayIsoDate } from "./db/convex.js";
+import { toE164Like, toEmailLike, normalizeParticipantId, senderAddress, collectParticipants } from "./utils/address.js";
+import { Command, parseCommand, HELP_TEXT } from "./commands/parser.js";
+
+export {
+  type Island, type Goal, type Agent, type PhotoAnalysisResponse, type PhotoAutoCheckInResult, type GoalLookup,
+  resolveSenderIsland, fetchGoals, lookupGoalByIndex, todayIsoDate,
+  toE164Like, toEmailLike, normalizeParticipantId, senderAddress, collectParticipants,
+  type Command, parseCommand, HELP_TEXT
+};
+
+
 // ── Env / config ──────────────────────────────────────────────────────
 
 export const PROJECT_ID = process.env.PHOTON_PROJECT_ID ?? process.env.projid;
@@ -123,181 +136,6 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
       });
   });
 }
-
-// ── Types ─────────────────────────────────────────────────────────────
-
-export type Island = {
-  _id: string; code: string; name: string; status: string;
-  islandLevel: number; xp: number; currency: number;
-};
-export type Goal = {
-  _id: string; text: string; islandId: string; phoneNumber: string;
-  status: string; createdAt: number;
-};
-export type Agent = {
-  _id: string; phoneNumber: string; motivation: number; personalityProfile: string;
-};
-
-type PhotoAnalysisResponse = {
-  is_task_proof: boolean;
-  matched_goal_index: number | null;
-  confidence: number;
-  reason: string;
-};
-
-export type PhotoAutoCheckInResult = {
-  checkedIn: boolean;
-  reply?: string;
-  reason?: string;
-};
-
-// ── Address normalization ─────────────────────────────────────────────
-
-export function toE164Like(value: unknown): string | null {
-  if (!value || typeof value !== "string") return null;
-  const digits = value.trim().replace(/\D/g, "");
-  if (digits.length < 10 || digits.length > 15) return null;
-  return `+${digits}`;
-}
-
-export function toEmailLike(value: unknown): string | null {
-  if (!value || typeof value !== "string") return null;
-  const trimmed = value.trim().toLowerCase();
-  // Accept any valid-looking email so iMessage Apple IDs from other domains
-  // aren't dropped in group chats.
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-    return trimmed;
-  }
-  return null;
-}
-
-export function normalizeParticipantId(value: unknown): string | null {
-  const phone = toE164Like(value);
-  if (phone && phone.replace(/\D/g, "") !== BOT_PHONE) return phone;
-  const email = toEmailLike(value);
-  if (email) return email.toLowerCase();
-  return null;
-}
-
-export function senderAddress(message: any): string | null {
-  const s = message?.sender ?? {};
-  const candidates = [s.phoneNumber, s.address, s.email, s.id];
-  for (const c of candidates) {
-    const participant = normalizeParticipantId(c);
-    if (participant) return participant;
-  }
-  return null;
-}
-
-export function collectParticipants(space: any, message: any): string[] {
-  const raw: unknown[] = [];
-  for (const arr of [space?.participants, space?.members, space?.users]) {
-    if (!Array.isArray(arr)) continue;
-    for (const item of arr) raw.push(item?.phoneNumber, item?.address, item?.email, item?.id, item);
-  }
-  raw.push(message?.sender?.phoneNumber, message?.sender?.address, message?.sender?.email, message?.sender?.id);
-  const out = new Set<string>();
-  for (const v of raw) {
-    const participant = normalizeParticipantId(v);
-    if (participant) out.add(participant);
-  }
-  return [...out];
-}
-
-// ── Convex helpers ────────────────────────────────────────────────────
-
-export async function resolveSenderIsland(sender: string, spaceId?: string): Promise<Island | null> {
-  if (spaceId) {
-    const room = await convex.query("groupRooms:getBySpace" as any, { spaceId });
-    if (room?.island) {
-      return room.island as Island;
-    }
-  }
-  const islands: Island[] = await convex.query("islands:getIslandsByPhone" as any, { phoneNumber: sender });
-  if (!islands.length) return null;
-  const active = islands.filter((i) => i.status === "active");
-  const pool = active.length ? active : islands;
-  return pool[0];
-}
-
-export async function fetchGoals(islandId: string, sender: string): Promise<Goal[]> {
-  return await convex.query("goals:getGoals" as any, { islandId, phoneNumber: sender });
-}
-
-export type GoalLookup =
-  | { ok: true; island: Island; goal: Goal; goals: Goal[] }
-  | { ok: false; reason: "no-island" | "no-goals" | "out-of-range"; count?: number };
-
-export async function lookupGoalByIndex(sender: string, index1: number, spaceId?: string): Promise<GoalLookup> {
-  const island = await resolveSenderIsland(sender, spaceId);
-  if (!island) return { ok: false, reason: "no-island" };
-  const goals = await fetchGoals(island._id, sender);
-  if (!goals.length) return { ok: false, reason: "no-goals" };
-  const idx = index1 - 1;
-  if (idx < 0 || idx >= goals.length) return { ok: false, reason: "out-of-range", count: goals.length };
-  return { ok: true, island, goal: goals[idx], goals };
-}
-
-export function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-// ── Command parsing ───────────────────────────────────────────────────
-
-export type Command =
-  | { kind: "start" }
-  | { kind: "help" }
-  | { kind: "goals" }
-  | { kind: "add"; text: string }
-  | { kind: "drop"; index: number }
-  | { kind: "edit"; index: number; text: string }
-  | { kind: "done"; index: number }
-  | { kind: "undo"; index: number }
-  | { kind: "status" }
-  | { kind: "none" };
-
-export function parseCommand(raw: string): Command {
-  const body = raw.trim();
-  const lower = body.toLowerCase();
-
-  // Commands must be explicit slash-commands.
-  if (!lower.startsWith("/")) return { kind: "none" };
-
-  if (lower === "/start") return { kind: "start" };
-  if (lower === "/help") return { kind: "help" };
-  if (lower === "/goals") return { kind: "goals" };
-  if (lower === "/status") return { kind: "status" };
-
-  let m = body.match(/^\/add\s+(?:goal[:\s]+)?(.+)$/i);
-  if (m) return { kind: "add", text: m[1].trim() };
-
-  m = body.match(/^\/drop\s+(\d+)\s*$/i);
-  if (m) return { kind: "drop", index: parseInt(m[1], 10) };
-
-  m = body.match(/^\/edit\s+(\d+)\s+(.+)$/i);
-  if (m) return { kind: "edit", index: parseInt(m[1], 10), text: m[2].trim() };
-
-  m = body.match(/^\/done\s+(\d+)\s*$/i);
-  if (m) return { kind: "done", index: parseInt(m[1], 10) };
-
-  m = body.match(/^\/undo\s+(\d+)\s*$/i);
-  if (m) return { kind: "undo", index: parseInt(m[1], 10) };
-
-  return { kind: "none" };
-}
-
-export const HELP_TEXT =
-  "✨ Island Habits — here's what I can do ✨\n" +
-  "🏝️  /start — spin up a fresh island for your group\n" +
-  "📋  /goals — list your active goals (numbered)\n" +
-  "🌱  /add <goal> — plant a new goal on your island\n" +
-  "🍂  /drop <n> — let the Nth goal go\n" +
-  "✏️  /edit <n> <new text> — reshape the Nth goal\n" +
-  "✅  /done <n> — mark the Nth goal done for today (+1 XP, +10 💰)\n" +
-  "↩️  /undo <n> — undo today's check-in for the Nth goal\n" +
-  "📊  /status — today's progress & motivation\n" +
-  "❓  /help — show this list";
-
 
 // ── Handlers ──────────────────────────────────────────────────────────
 
@@ -499,33 +337,17 @@ async function applyGoalCheckIn(
   goal: Goal,
 ): Promise<{ status: "checked_in" | "already_done"; doneCount: number; totalGoals: number }> {
   const today = todayIsoDate();
-  const preCheckIns: any[] = await convex.query("goals:getTodayCheckIns" as any, {
+  const result: any = await convex.mutation("goals:checkIn" as any, {
+    goalId: goal._id,
     islandId,
     phoneNumber: sender,
     date: today,
   });
-  const alreadyDone = preCheckIns.some((c) => c.goalId === goal._id && c.completed);
-  if (!alreadyDone) {
-    await convex.mutation("goals:checkIn" as any, {
-      goalId: goal._id,
-      islandId,
-      phoneNumber: sender,
-      date: today,
-    });
-  }
-  const [goals, checkIns] = await Promise.all([
-    fetchGoals(islandId, sender),
-    convex.query("goals:getTodayCheckIns" as any, {
-      islandId,
-      phoneNumber: sender,
-      date: today,
-    }),
-  ]);
-  const doneCount = (checkIns as any[]).filter((c) => c.completed).length;
+  
   return {
-    status: alreadyDone ? "already_done" : "checked_in",
-    doneCount,
-    totalGoals: goals.length,
+    status: result.alreadyDone ? "already_done" : "checked_in",
+    doneCount: result.doneCount,
+    totalGoals: result.totalGoals,
   };
 }
 

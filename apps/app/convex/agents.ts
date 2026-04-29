@@ -1,13 +1,13 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { defaultActivity, defaultMovementState } from "./lib/agentState";
-import { normalizeParticipantId } from "./lib/identity";
+import { normalizeParticipantId, requireParticipantId } from "./lib/identity";
 
 // Look up an agent for a user on an island
 export const getAgent = query({
   args: { islandId: v.id("islands"), phoneNumber: v.string() },
   handler: async (ctx, args) => {
-    const phoneNumber = normalizeParticipantId(args.phoneNumber);
+    const phoneNumber = await requireParticipantId(ctx, args.phoneNumber);
     const matches = await ctx.db
       .query("agents")
       .withIndex("by_island_phone", (q) =>
@@ -28,7 +28,7 @@ export const createAgent = mutation({
     reminderVariants: v.optional(v.array(v.string())),
   },
   async handler(ctx, args) {
-    const phoneNumber = normalizeParticipantId(args.phoneNumber);
+    const phoneNumber = await requireParticipantId(ctx, args.phoneNumber);
     const now = Date.now();
     const trimmedGoals = args.goals.map((goal) => goal.trim()).filter(Boolean);
     const personality =
@@ -202,7 +202,7 @@ export const setAgentActivity = mutation({
     phase: v.optional(v.number()),
   },
   async handler(ctx, args) {
-    const phoneNumber = normalizeParticipantId(args.phoneNumber);
+    const phoneNumber = await requireParticipantId(ctx, args.phoneNumber);
     const rows = await ctx.db
       .query("agents")
       .withIndex("by_island_phone", (q) =>

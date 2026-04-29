@@ -45,7 +45,9 @@ export default defineSchema({
     phoneNumbers: v.array(v.string()),
     createdAt: v.number(),
     ascendedAt: v.optional(v.number()),
-  }).index("by_code", ["code"]),
+  })
+    .index("by_code", ["code"])
+    .index("by_status", ["status"]),
 
   islandMembers: defineTable({
     islandId: v.id("islands"),
@@ -95,7 +97,8 @@ export default defineSchema({
   })
     .index("by_island", ["islandId"])
     .index("by_island_phone", ["islandId", "phoneNumber"])
-    .index("by_island_phone_status", ["islandId", "phoneNumber", "status"]),
+    .index("by_island_phone_status", ["islandId", "phoneNumber", "status"])
+    .index("by_status", ["status"]),
 
   checkIns: defineTable({
     goalId: v.id("goals"),
@@ -134,7 +137,9 @@ export default defineSchema({
     // buildings once the player flies to the next island (they still live in
     // the table so visits can browse history). Undefined = legacy = era 0.
     placedAtEra: v.optional(v.number()),
-  }).index("by_island", ["islandId"]),
+  })
+    .index("by_island", ["islandId"])
+    .index("by_state", ["state"]),
 
   events: defineTable({
     islandId: v.id("islands"),

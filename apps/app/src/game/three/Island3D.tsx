@@ -15,7 +15,7 @@ import { useGame, GameCtx, ISLAND_TIERS } from "../state";
 import type { Agent } from "../state";
 import { Building3D } from "./Building3D";
 import { Agent3D } from "./Agent3D";
-import { SceneryRenderer, GrassTuft } from "./Scenery3D";
+import { SceneryRenderer, GrassTufts } from "./Scenery3D";
 import { DistrictsRenderer } from "./Districts3D";
 import { PlacementGhost } from "./PlacementGhost";
 
@@ -241,13 +241,7 @@ const GrassDecor = () => {
       }),
     [],
   );
-  return (
-    <>
-      {tufts.map((p, i) => (
-        <GrassTuft key={i} pos={p} />
-      ))}
-    </>
-  );
+  return <GrassTufts tufts={tufts} />;
 };
 
 /* ── Ambient particles / fireflies ───────────────────── */

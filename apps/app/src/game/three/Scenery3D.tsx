@@ -1,5 +1,6 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
+import { Instances, Instance } from "@react-three/drei";
 import * as THREE from "three";
 import type { Scenery } from "../state";
 
@@ -225,32 +226,40 @@ export const Flower3D = ({ pos, variant }: { pos: [number, number]; variant: num
   );
 };
 
-/* ── Grass tuft ──────────────────────────────────────── */
-export const GrassTuft = ({ pos }: { pos: [number, number] }) => {
-  const seed = pos[0] * 73.1 + pos[1] * 119.3;
+/* ── Scattered grass tufts ───────────────────────────── */
+const baseGrassGeo = new THREE.ConeGeometry(0.012, 1, 3);
+baseGrassGeo.translate(0, 0.5, 0); // origin at bottom
+
+export const GrassTufts = ({ tufts }: { tufts: [number, number][] }) => {
   return (
-  <WindSway pos={pos} intensity={1.8}>
-    <group position={[pos[0], 0.27, pos[1]]}>
-      {[0, 1, 2, 3, 4].map((i) => {
-        const s = seed + i;
-        const a = i * 1.2 + seededRandom(s);
-        const lean = (seededRandom(s + 50) - 0.5) * 0.3;
+    <Instances geometry={baseGrassGeo} limit={tufts.length * 5} castShadow receiveShadow>
+      <meshStandardMaterial roughness={0.8} />
+      {tufts.map((pos, tIdx) => {
+        const seed = pos[0] * 73.1 + pos[1] * 119.3;
         return (
-          <mesh
-            key={i}
-            position={[Math.cos(a) * 0.035, 0.05, Math.sin(a) * 0.035]}
-            rotation={[lean, a, 0.05]}
-          >
-            <coneGeometry args={[0.012, 0.1 + seededRandom(s + 100) * 0.04, 3]} />
-            <meshStandardMaterial
-              color={`hsl(${115 + seededRandom(s + 200) * 20}, ${40 + seededRandom(s + 300) * 15}%, ${38 + seededRandom(s + 400) * 12}%)`}
-              roughness={0.8}
-            />
-          </mesh>
+          <WindSway key={tIdx} pos={pos} intensity={1.8}>
+            <group position={[pos[0], 0.27, pos[1]]}>
+              {[0, 1, 2, 3, 4].map((i) => {
+                const s = seed + i;
+                const a = i * 1.2 + seededRandom(s);
+                const lean = (seededRandom(s + 50) - 0.5) * 0.3;
+                const h = 0.1 + seededRandom(s + 100) * 0.04;
+                const color = new THREE.Color(\`hsl(\${115 + seededRandom(s + 200) * 20}, \${40 + seededRandom(s + 300) * 15}%, \${38 + seededRandom(s + 400) * 12}%)\`);
+                return (
+                  <Instance
+                    key={i}
+                    position={[Math.cos(a) * 0.035, 0, Math.sin(a) * 0.035]}
+                    rotation={[lean, a, 0.05]}
+                    scale={[1, h, 1]}
+                    color={color}
+                  />
+                );
+              })}
+            </group>
+          </WindSway>
         );
       })}
-    </group>
-  </WindSway>
+    </Instances>
   );
 };
 

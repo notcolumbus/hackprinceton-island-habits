@@ -1,3 +1,5 @@
+import type { QueryCtx, MutationCtx } from "../_generated/server";
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
 export function normalizeParticipantId(raw: string): string {
@@ -33,4 +35,19 @@ export function normalizeParticipantList(values: string[]): string[] {
     out.add(normalized);
   }
   return [...out];
+}
+
+export async function requireParticipantId(ctx: QueryCtx | MutationCtx, providedPhoneNumber: string): Promise<string> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) throw new Error("Unauthenticated");
+
+  const identityPhone = identity.phoneNumber ? normalizeParticipantId(identity.phoneNumber) : null;
+  const identityEmail = identity.email ? normalizeParticipantId(identity.email) : null;
+  const requested = normalizeParticipantId(providedPhoneNumber);
+
+  if (requested !== identityPhone && requested !== identityEmail) {
+    throw new Error("Unauthorized: identity mismatch");
+  }
+
+  return requested;
 }

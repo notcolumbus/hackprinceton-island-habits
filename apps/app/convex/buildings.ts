@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { tryNormalizeParticipantId } from "./lib/identity";
+import { requireParticipantId } from "./lib/identity";
 
 export const getBuildings = query({
   args: { islandId: v.id("islands") },
@@ -106,8 +106,7 @@ export const placeBuilding = mutation({
       throw new Error("Tile already occupied");
     }
 
-    const normalizedPlacedBy = tryNormalizeParticipantId(args.placedBy);
-    const placedBy = normalizedPlacedBy ?? (args.placedBy.trim() || "unknown");
+    const placedBy = await requireParticipantId(ctx, args.placedBy);
 
     const id = await ctx.db.insert("buildings", {
       ...args,

@@ -3,7 +3,7 @@ import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { defaultActivity, defaultMovementState } from "./lib/agentState";
-import { normalizeParticipantId } from "./lib/identity";
+import { normalizeParticipantId, requireParticipantId } from "./lib/identity";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const clamp = (value: number, min: number, max: number) =>
@@ -138,7 +138,7 @@ export const addGoals = mutation({
     goals: v.array(v.string()),
   },
   async handler(ctx, args) {
-    const phoneNumber = normalizeParticipantId(args.phoneNumber);
+    const phoneNumber = await requireParticipantId(ctx, args.phoneNumber);
     const goalIds: string[] = [];
     const now = Date.now();
     await ensureAgentForMember(ctx, args.islandId, phoneNumber);
@@ -207,7 +207,7 @@ export const getGoals = query({
     phoneNumber: v.string(),
   },
   async handler(ctx, args) {
-    const phoneNumber = normalizeParticipantId(args.phoneNumber);
+    const phoneNumber = await requireParticipantId(ctx, args.phoneNumber);
     const goals = await ctx.db
       .query("goals")
       .withIndex("by_island_phone", (q) =>
@@ -245,7 +245,7 @@ export const checkIn = mutation({
     date: v.string(), // YYYY-MM-DD
   },
   async handler(ctx, args) {
-    const phoneNumber = normalizeParticipantId(args.phoneNumber);
+    const phoneNumber = await requireParticipantId(ctx, args.phoneNumber);
     const goal = await ctx.db.get(args.goalId);
     if (!goal) throw new Error("Goal not found");
     if (goal.islandId !== args.islandId) throw new Error("Goal does not belong to this island");
@@ -260,8 +260,32 @@ export const checkIn = mutation({
       )
       .first();
 
+    const getStats = async () => {
+      const allCheckIns = await ctx.db
+        .query("checkIns")
+        .withIndex("by_island_date", (q) =>
+          q.eq("islandId", args.islandId).eq("date", args.date)
+        )
+        .filter((q) => q.eq(q.field("phoneNumber"), phoneNumber))
+        .collect();
+      
+      const allGoals = await ctx.db
+        .query("goals")
+        .withIndex("by_island_phone", (q) =>
+          q.eq("islandId", args.islandId).eq("phoneNumber", phoneNumber)
+        )
+        .filter((q) => q.eq(q.field("status"), "active"))
+        .collect();
+        
+      return {
+        doneCount: allCheckIns.filter(c => c.completed).length,
+        totalGoals: allGoals.length
+      };
+    };
+
     if (existing) {
-      return existing;
+      const stats = await getStats();
+      return { checkIn: existing, alreadyDone: true, ...stats };
     }
 
     // Create check-in
@@ -358,7 +382,8 @@ export const checkIn = mutation({
       });
     }
 
-    return await ctx.db.get(checkInId);
+    const stats = await getStats();
+    return { checkIn: await ctx.db.get(checkInId), alreadyDone: false, ...stats };
   },
 });
 
@@ -371,7 +396,7 @@ export const uncheckIn = mutation({
     date: v.string(), // YYYY-MM-DD
   },
   async handler(ctx, args) {
-    const phoneNumber = normalizeParticipantId(args.phoneNumber);
+    const phoneNumber = await requireParticipantId(ctx, args.phoneNumber);
     const goal = await ctx.db.get(args.goalId);
     if (!goal) throw new Error("Goal not found");
     if (goal.islandId !== args.islandId) throw new Error("Goal does not belong to this island");
@@ -442,7 +467,7 @@ export const getTodayCheckIns = query({
     date: v.string(),
   },
   async handler(ctx, args) {
-    const phoneNumber = normalizeParticipantId(args.phoneNumber);
+    const phoneNumber = await requireParticipantId(ctx, args.phoneNumber);
     const checkIns = await ctx.db
       .query("checkIns")
       .withIndex("by_island_date", (q) =>
