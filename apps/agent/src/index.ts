@@ -52,6 +52,14 @@ async function main(): Promise<void> {
     console.error("❌ Knot transaction bootstrap sync crashed:", err);
   });
 
+  // Graceful shutdown so DO can successfully terminate the old container
+  const shutdown = () => {
+    console.log("Received kill signal, shutting down agent...");
+    process.exit(0);
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+
   for await (const [space, message] of app.messages) {
     void (async () => {
       const resolvedSender = senderAddress(message);
@@ -98,8 +106,11 @@ async function main(): Promise<void> {
           console.log(`└─ (empty body — tapback or system message, skipped)`);
           return;
         }
-        const participants = collectParticipants(space as any, message as any);
-        const isDirectChat = participants.length <= 1;
+        
+        // Use space.type to check for DMs if available, falling back to participants count if needed.
+        const isGroup = (space as any).type === "group" || space.id.includes(";+;");
+        const isDirectChat = !isGroup;
+        
         const hasWakeWord = isTagged(body);
         if (!hasWakeWord && !isDirectChat) {
           console.log(`└─ (no "isla" mention — skipped)`);
