@@ -53,81 +53,83 @@ async function main(): Promise<void> {
   });
 
   for await (const [space, message] of app.messages) {
-    const resolvedSender = senderAddress(message);
-    const senderLabel = resolvedSender ?? `raw:${message.sender.id}`;
-    const kind = resolvedSender?.startsWith("+") ? "phone" : resolvedSender ? "email" : "unknown";
-    const time = message.timestamp.toLocaleTimeString();
-    const textContent = message.content.find((c): c is Extract<typeof c, { type: "plain_text" }> => c.type === "plain_text");
-    const body = textContent?.text ?? "";
-    const cmd = parseCommand(body);
-
-    const imageAttachments = message.content.filter(
-      (c): c is Extract<typeof c, { type: "attachment" }> =>
-        c.type === "attachment" && c.mimeType.startsWith("image/"),
-    );
-    if (imageAttachments.length > 0 && resolvedSender) {
-      for (const att of imageAttachments) {
-        try {
-          const imageBase64 = Buffer.from(att.data).toString("base64");
-          const result = await autoCheckInFromPhoto(
-            resolvedSender,
-            space.id,
-            imageBase64,
-            att.mimeType,
-          );
-          if (!result.checkedIn || !result.reply) continue;
-          await space.send(text(result.reply));
-          console.log(`└─ 📸 auto check-in for ${senderLabel}`);
-          break;
-        } catch (err: any) {
-          console.error(`└─ ❌ image auto check-in failed for ${senderLabel}: ${err?.message ?? err}`);
+    void (async () => {
+      const resolvedSender = senderAddress(message);
+      const senderLabel = resolvedSender ?? `raw:${message.sender.id}`;
+      const kind = resolvedSender?.startsWith("+") ? "phone" : resolvedSender ? "email" : "unknown";
+      const time = message.timestamp.toLocaleTimeString();
+      const textContent = message.content.find((c): c is Extract<typeof c, { type: "plain_text" }> => c.type === "plain_text");
+      const body = textContent?.text ?? "";
+      const cmd = parseCommand(body);
+  
+      const imageAttachments = message.content.filter(
+        (c): c is Extract<typeof c, { type: "attachment" }> =>
+          c.type === "attachment" && c.mimeType.startsWith("image/"),
+      );
+      if (imageAttachments.length > 0 && resolvedSender) {
+        for (const att of imageAttachments) {
+          try {
+            const imageBase64 = Buffer.from(att.data).toString("base64");
+            const result = await autoCheckInFromPhoto(
+              resolvedSender,
+              space.id,
+              imageBase64,
+              att.mimeType,
+            );
+            if (!result.checkedIn || !result.reply) continue;
+            await space.send(text(result.reply));
+            console.log(`└─ 📸 auto check-in for ${senderLabel}`);
+            break;
+          } catch (err: any) {
+            console.error(`└─ ❌ image auto check-in failed for ${senderLabel}: ${err?.message ?? err}`);
+          }
         }
       }
-    }
-
-    if (!textContent) continue;
-
-    logFrame(time, space.id, senderLabel, kind, body, cmd.kind);
-
-    // Log every inbound message so the conversational fallback has context.
-    appendMessage(space.id, senderLabel, body);
-
-    if (cmd.kind === "none") {
-      if (!body.trim()) {
-        console.log(`└─ (empty body — tapback or system message, skipped)`);
-        continue;
+  
+      if (!textContent) return;
+  
+      logFrame(time, space.id, senderLabel, kind, body, cmd.kind);
+  
+      // Log every inbound message so the conversational fallback has context.
+      appendMessage(space.id, senderLabel, body);
+  
+      if (cmd.kind === "none") {
+        if (!body.trim()) {
+          console.log(`└─ (empty body — tapback or system message, skipped)`);
+          return;
+        }
+        const participants = collectParticipants(space as any, message as any);
+        const isDirectChat = participants.length <= 1;
+        const hasWakeWord = isTagged(body);
+        if (!hasWakeWord && !isDirectChat) {
+          console.log(`└─ (no "isla" mention — skipped)`);
+          return;
+        }
+        const chatSender = resolvedSender ?? `unknown:${message.sender.id}`;
+        if (!resolvedSender) {
+          console.warn(`└─ (sender unresolved for chat; using ${chatSender})`);
+        }
+        try {
+          await handleChat(space, chatSender, body, space.id, message);
+          console.log(`└─ 💬 chat reply for ${chatSender}`);
+        } catch (err: any) {
+          console.error(`└─ ❌ chat reply for ${chatSender} failed: ${err?.message ?? err}`);
+        }
+        return;
       }
-      const participants = collectParticipants(space as any, message as any);
-      const isDirectChat = participants.length <= 1;
-      const hasWakeWord = isTagged(body);
-      if (!hasWakeWord && !isDirectChat) {
-        console.log(`└─ (no "isla" mention — skipped)`);
-        continue;
-      }
-      const chatSender = resolvedSender ?? `unknown:${message.sender.id}`;
-      if (!resolvedSender) {
-        console.warn(`└─ (sender unresolved for chat; using ${chatSender})`);
-      }
+  
       try {
-        await handleChat(space, chatSender, body, space.id, message);
-        console.log(`└─ 💬 chat reply for ${chatSender}`);
+        const result = await dispatchKnownCommand(space, message, cmd, resolvedSender);
+        if (result === "no-sender") {
+          console.log(`└─ ⚠️  could not resolve sender address for ${message.sender.id}`);
+        } else {
+          console.log(`└─ ✅ /${cmd.kind} for ${senderLabel}`);
+        }
       } catch (err: any) {
-        console.error(`└─ ❌ chat reply for ${chatSender} failed: ${err?.message ?? err}`);
+        console.error(`└─ ❌ /${cmd.kind} for ${senderLabel} failed: ${err?.message ?? err}`);
+        await space.send(text("Something went wrong. Try again in a moment."));
       }
-      continue;
-    }
-
-    try {
-      const result = await dispatchKnownCommand(space, message, cmd, resolvedSender);
-      if (result === "no-sender") {
-        console.log(`└─ ⚠️  could not resolve sender address for ${message.sender.id}`);
-      } else {
-        console.log(`└─ ✅ /${cmd.kind} for ${senderLabel}`);
-      }
-    } catch (err: any) {
-      console.error(`└─ ❌ /${cmd.kind} for ${senderLabel} failed: ${err?.message ?? err}`);
-      await space.send(text("Something went wrong. Try again in a moment."));
-    }
+    })().catch(err => console.error('Unhandled error in message processing:', err));
   }
 }
 

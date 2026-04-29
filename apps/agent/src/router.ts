@@ -363,7 +363,7 @@ async function roastGoal(playerName: string, proposedGoal: string): Promise<{ me
   const res = await fetch(`${BACKEND_URL}/jobs/roast-goal`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ player_name: playerName, proposed_goal: proposedGoal }),
+    body: JSON.stringify({ player_name: playerName, proposed_goal: proposedGoal }), signal: AbortSignal.timeout(10000),
   });
   if (!res.ok) throw new Error(`roast-goal HTTP ${res.status}`);
   return await res.json() as { message: string, reasoning?: string };
@@ -551,7 +551,7 @@ async function analyzeTaskPhoto(
       goals: goals.map((g) => g.text),
       image_base64: imageBase64,
       mime_type: mimeType,
-    }),
+    }), signal: AbortSignal.timeout(20000),
   });
   if (!res.ok) {
     const raw = await res.text().catch(() => "");
@@ -722,7 +722,7 @@ export async function handleChat(
         island_context: contextStr,
         history: history.map((h) => ({ who: h.who, text: h.text })),
         latest: body,
-      }),
+      }), signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) throw new Error(`chat-reply HTTP ${res.status}`);
     const data = (await res.json()) as { message?: string };
