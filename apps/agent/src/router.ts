@@ -44,14 +44,8 @@ export function assertEnv(): void {
 export const convex = new ConvexHttpClient(CONVEX_URL);
 
 async function sendThreadSafe(space: any, message: any, body: string): Promise<"reply" | "space"> {
-  if (message && typeof message.reply === "function") {
-    try {
-      await message.reply(text(body));
-      return "reply";
-    } catch (err: any) {
-      console.warn("[send] message.reply failed, falling back to space.send:", err?.message ?? err);
-    }
-  }
+  // Always use space.send as message.reply (inline replies) might be unreliable
+  // or silently fail on some bridges/clients.
   await space.send(text(body));
   return "space";
 }
