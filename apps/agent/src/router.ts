@@ -26,7 +26,6 @@ const KNOT_SYNC_COOLDOWN_MS = 10 * 60 * 1000;
 const KNOT_SYNC_TIMEOUT_MS = 6_000;
 const KNOT_SYNC_FAIL_BACKOFF_MS = 60_000;
 const CHAT_CONTEXT_TIMEOUT_MS = 2_500;
-const CHAT_REPLY_TIMEOUT_MS = 8_000;
 const TRANSACTION_HINT_RE = /\b(transaction|transactions|purchase|purchases|spent|spend|spending|charge|charges|charged|merchant|merchants|payment|payments|receipt|receipts|doordash|uber\s?eats|order|orders|knot)\b/i;
 const knotSyncInFlightByIsland = new Set<string>();
 const knotSyncLastAtByIsland = new Map<string, number>();
@@ -714,13 +713,10 @@ export async function handleChat(
     `Try /goals or /status if you want a quick update.`;
 
   let reply = "";
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), CHAT_REPLY_TIMEOUT_MS);
   try {
     const res = await fetch(`${BACKEND_URL}/jobs/chat-reply`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      signal: controller.signal,
       body: JSON.stringify({
         player_name: playerName,
         island_context: contextStr,
@@ -734,8 +730,6 @@ export async function handleChat(
   } catch (err: any) {
     console.error("[chat] chat-reply failed:", err?.message ?? err);
     reply = fallbackReply;
-  } finally {
-    clearTimeout(timeout);
   }
 
   if (!reply || reply.toUpperCase() === "SKIP") {
